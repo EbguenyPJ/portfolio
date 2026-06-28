@@ -4,7 +4,10 @@ import React from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
-import type { Project, ArchNode, ArchEdge, ArchScope, ArchNodeType } from '@/data/projects'
+import type {
+  Project, Block, ArchNode, ArchEdge, ArchScope, ArchNodeType, ArchDiagram,
+  ProjectFeature, CodeTab, TimelinePhase, BeforeAfterRow, Metric, RepoNode,
+} from '@/data/projects'
 
 // ─── Animation presets ────────────────────────────────────────────────────────
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number]
@@ -85,24 +88,71 @@ function FadeCarousel({ images, interval = 4000, aspectRatio = '16/7', borderRad
   )
 }
 
+// ─── Block composition ─────────────────────────────────────────────────────────
+// New projects author `blocks`; legacy projects keep flat fields that we
+// auto-compose here into the default section order.
+function resolveBlocks(p: Project): Block[] {
+  if (p.blocks && p.blocks.length) return p.blocks
+  const b: Block[] = []
+  if (p.summary)      b.push({ type: 'summary',   body: p.summary })
+  if (p.problem)      b.push({ type: 'challenge', body: p.problem })
+  if (p.architecture || p.archNodes)
+    b.push({
+      type: 'architecture',
+      body: p.architecture ?? '',
+      diagrams: p.archNodes ? [{ nodes: p.archNodes, edges: p.archEdges, scopes: p.archScopes }] : [],
+    })
+  if (p.features && p.features.length) b.push({ type: 'features', items: p.features })
+  if (p.codeTabs && p.codeTabs.length) b.push({ type: 'code',     tabs: p.codeTabs })
+  return b
+}
+
+const DEFAULT_TITLE: Record<Block['type'], string> = {
+  summary:      'Executive Summary',
+  challenge:    'The Challenge',
+  architecture: 'Architecture',
+  features:     'Key Features',
+  code:         'Implementation',
+  timeline:     'Evolution',
+  beforeAfter:  'Before / After',
+  metrics:      'Impact',
+  systemMap:    'System Overview',
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function ProjectDetail({ project }: { project: Project }) {
+  const blocks = resolveBlocks(project)
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100vh' }}>
-      <HeroSection    project={project} />
-      <SummarySection project={project} />
-      <ChallengeSection project={project} />
-      <ArchSection    project={project} />
-      <FeaturesSection project={project} />
-      <CodeSection    project={project} />
+      <HeroSection project={project} />
+      {blocks.map((block, i) => {
+        const idx   = String(i + 1).padStart(2, '0')
+        const title = ('title' in block && block.title) || DEFAULT_TITLE[block.type]
+        return <BlockRenderer key={i} block={block} project={project} index={idx} title={title} />
+      })}
     </div>
   )
 }
 
+function BlockRenderer({ block, project, index, title }: { block: Block; project: Project; index: string; title: string }) {
+  switch (block.type) {
+    case 'summary':      return <SummarySection    project={project} body={block.body}      index={index} title={title} />
+    case 'challenge':    return <ChallengeSection   body={block.body}                        index={index} title={title} />
+    case 'architecture': return <ArchSection        body={block.body} diagrams={block.diagrams} index={index} title={title} />
+    case 'features':     return <FeaturesSection    items={block.items}                      index={index} title={title} />
+    case 'code':         return <CodeSection        tabs={block.tabs}                        index={index} title={title} />
+    case 'timeline':     return <TimelineSection    phases={block.phases}                    index={index} title={title} />
+    case 'beforeAfter':  return <BeforeAfterSection rows={block.rows} intro={block.intro}    index={index} title={title} />
+    case 'metrics':      return <MetricsSection     items={block.items}                      index={index} title={title} />
+    case 'systemMap':    return <SystemMapSection   repos={block.repos} body={block.body}    index={index} title={title} />
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 0 — HERO
+// HERO
 // ═══════════════════════════════════════════════════════════════════════════════
 function HeroSection({ project }: { project: Project }) {
+  const accent = project.accent ?? '#6EFF2A'
   return (
     <motion.section
       initial={{ opacity: 0 }}
@@ -111,8 +161,23 @@ function HeroSection({ project }: { project: Project }) {
       className="relative pt-40 pb-0 overflow-hidden"
       style={{ borderBottom: '1px solid var(--border)' }}
     >
+      {/* Atmospheric brand glow — a heavily-blurred radial tint sitting behind the giant
+          title, so the flat black gains imperceptible 3D volume instead of looking empty. */}
+      <div aria-hidden style={{
+        position:      'absolute',
+        top:           '12%',
+        left:          '-8%',
+        width:         '70%',
+        height:        '60%',
+        background:     `radial-gradient(circle, ${accent} 0%, transparent 70%)`,
+        filter:        'blur(120px)',
+        opacity:       0.16,
+        pointerEvents: 'none',
+        zIndex:        0,
+      }} />
+
       {/* Back link */}
-      <div className="px-8 md:px-24 mb-14">
+      <div className="px-8 md:px-24 mb-14" style={{ position: 'relative', zIndex: 1 }}>
         <Link href="/projects">
           <motion.span
             initial={{ opacity: 0, x: -10 }}
@@ -142,6 +207,7 @@ function HeroSection({ project }: { project: Project }) {
         initial="hidden"
         animate="show"
         className="px-8 md:px-24"
+        style={{ position: 'relative', zIndex: 1 }}
       >
         {/* Index */}
         <motion.p variants={fadeUp} style={{
@@ -176,6 +242,7 @@ function HeroSection({ project }: { project: Project }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.8, ease: EASE }}
           className="mx-8 md:mx-24 mt-4"
+          style={{ position: 'relative', zIndex: 1 }}
         >
           <FadeCarousel images={project.heroImages} interval={4500} aspectRatio="3/2" borderRadius="12px 12px 0 0" gradient />
         </motion.div>
@@ -185,7 +252,7 @@ function HeroSection({ project }: { project: Project }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.8, ease: EASE }}
           className="relative mx-8 md:mx-24 mt-4"
-          style={{ borderRadius: '12px 12px 0 0', overflow: 'hidden', border: '1px solid var(--border)', borderBottom: 'none', aspectRatio: '3/2' }}
+          style={{ borderRadius: '12px 12px 0 0', overflow: 'hidden', border: '1px solid var(--border)', borderBottom: 'none', aspectRatio: '3/2', zIndex: 1 }}
         >
           <Image src={project.heroImage} alt={project.title} fill style={{ objectFit: 'cover' }} />
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 55%, var(--bg) 100%)' }} />
@@ -196,7 +263,7 @@ function HeroSection({ project }: { project: Project }) {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35, duration: 0.8, ease: EASE }}
           className="mx-8 md:mx-24 mt-4"
-          style={{ borderRadius: '12px 12px 0 0', border: '1px solid var(--border)', borderBottom: 'none', aspectRatio: '3/2', background: 'rgba(242,240,236,0.015)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ borderRadius: '12px 12px 0 0', border: '1px solid var(--border)', borderBottom: 'none', aspectRatio: '3/2', background: 'rgba(242,240,236,0.015)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', zIndex: 1 }}
         >
           <span style={{ fontFamily: 'var(--font-space-grotesk)', fontSize: '0.68rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(242,240,236,0.12)' }}>
             Project Screenshot · 1600 × 700
@@ -208,9 +275,9 @@ function HeroSection({ project }: { project: Project }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 1 — EXECUTIVE SUMMARY  (description + metadata sidebar)
+// EXECUTIVE SUMMARY  (description + metadata sidebar)
 // ═══════════════════════════════════════════════════════════════════════════════
-function SummarySection({ project }: { project: Project }) {
+function SummarySection({ project, body, index, title }: { project: Project; body: string; index: string; title: string }) {
   const meta = [
     { label: 'Role',     value: project.role },
     { label: 'Year',     value: project.year },
@@ -223,7 +290,7 @@ function SummarySection({ project }: { project: Project }) {
       className="px-8 md:px-24 py-20"
       style={{ borderBottom: '1px solid var(--border)' }}
     >
-      <SectionLabel index="01">Executive Summary</SectionLabel>
+      <SectionLabel index={index}>{title}</SectionLabel>
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_280px] gap-16 mt-10">
 
@@ -235,7 +302,7 @@ function SummarySection({ project }: { project: Project }) {
           color:      'rgba(242,240,236,0.7)',
           lineHeight: 1.85,
         }}>
-          {project.summary}
+          {body}
         </motion.p>
 
         {/* Right — sidebar metadata */}
@@ -323,16 +390,16 @@ function SummarySection({ project }: { project: Project }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 2 — THE CHALLENGE
+// THE CHALLENGE
 // ═══════════════════════════════════════════════════════════════════════════════
-function ChallengeSection({ project }: { project: Project }) {
+function ChallengeSection({ body, index, title }: { body: string; index: string; title: string }) {
   return (
     <motion.section
       variants={stagger} initial="hidden" whileInView="show" viewport={inView}
       className="px-8 md:px-24 py-20"
       style={{ borderBottom: '1px solid var(--border)' }}
     >
-      <SectionLabel index="02">The Challenge</SectionLabel>
+      <SectionLabel index={index}>{title}</SectionLabel>
 
       <div className="grid grid-cols-1 md:grid-cols-[auto_1fr] gap-8 md:gap-20 mt-10 items-start">
         {/* Decorative quotation mark */}
@@ -346,7 +413,7 @@ function ChallengeSection({ project }: { project: Project }) {
           display:    'block',
           marginTop:  '0.25rem',
         }}>
-          "
+          &ldquo;
         </motion.span>
 
         <motion.p variants={fadeUp} style={{
@@ -357,7 +424,7 @@ function ChallengeSection({ project }: { project: Project }) {
           lineHeight: 1.85,
           maxWidth:   '72ch',
         }}>
-          {project.problem}
+          {body}
         </motion.p>
       </div>
     </motion.section>
@@ -365,35 +432,54 @@ function ChallengeSection({ project }: { project: Project }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 3 — ARCHITECTURE  (PRIORIDAD ALTA)
+// ARCHITECTURE  (prose + one or more diagrams)
 // ═══════════════════════════════════════════════════════════════════════════════
-function ArchSection({ project }: { project: Project }) {
+function ArchSection({ body, diagrams, index, title }: { body: string; diagrams?: ArchDiagram[]; index: string; title: string }) {
+  const diags = diagrams && diagrams.length ? diagrams : null
   return (
     <motion.section
       variants={stagger} initial="hidden" whileInView="show" viewport={inView}
       className="px-8 md:px-24 py-20"
       style={{ borderBottom: '1px solid var(--border)' }}
     >
-      <SectionLabel index="03">Architecture</SectionLabel>
+      <SectionLabel index={index}>{title}</SectionLabel>
 
       {/* Prose explanation */}
-      <motion.p variants={fadeUp} style={{
-        fontFamily:  'var(--font-space-grotesk)',
-        fontSize:    'clamp(1.05rem, 1.45vw, 1.25rem)',
-        fontWeight:  300,
-        color:       'rgba(242,240,236,0.7)',
-        lineHeight:  1.85,
-        maxWidth:    '72ch',
-        marginTop:   '2rem',
-        marginBottom:'3.5rem',
-      }}>
-        {project.architecture}
-      </motion.p>
+      {body && (
+        <motion.p variants={fadeUp} style={{
+          fontFamily:  'var(--font-space-grotesk)',
+          fontSize:    'clamp(1.05rem, 1.45vw, 1.25rem)',
+          fontWeight:  300,
+          color:       'rgba(242,240,236,0.7)',
+          lineHeight:  1.85,
+          maxWidth:    '72ch',
+          marginTop:   '2rem',
+          marginBottom:'3.5rem',
+        }}>
+          {body}
+        </motion.p>
+      )}
 
-      {/* Diagram */}
-      <motion.div variants={fadeUp}>
-        <ArchDiagram nodes={project.archNodes} edges={project.archEdges} scopes={project.archScopes} />
-      </motion.div>
+      {/* Diagram(s) */}
+      {diags ? diags.map((d, i) => (
+        <motion.div variants={fadeUp} key={i} style={{ marginTop: i === 0 ? 0 : '2rem' }}>
+          {d.title && (
+            <p style={{
+              fontFamily:    'var(--font-space-grotesk)',
+              fontSize:      '0.68rem',
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+              color:         'rgba(242,240,236,0.4)',
+              marginBottom:  '0.75rem',
+            }}>
+              {d.title}
+            </p>
+          )}
+          <ArchDiagram nodes={d.nodes} edges={d.edges} scopes={d.scopes} />
+        </motion.div>
+      )) : (
+        <motion.div variants={fadeUp}><ArchDiagram /></motion.div>
+      )}
     </motion.section>
   )
 }
@@ -671,19 +757,349 @@ function ArchDiagram({ nodes, edges, scopes }: { nodes?: ArchNode[]; edges?: Arc
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 4 — KEY FEATURES  (split-view alternating)
+// TIMELINE  (vertical rail — project evolution by phase)
 // ═══════════════════════════════════════════════════════════════════════════════
-function FeaturesSection({ project }: { project: Project }) {
+function TimelineSection({ phases, index, title }: { phases: TimelinePhase[]; index: string; title: string }) {
   return (
     <motion.section
       variants={stagger} initial="hidden" whileInView="show" viewport={inView}
       className="px-8 md:px-24 py-20"
       style={{ borderBottom: '1px solid var(--border)' }}
     >
-      <SectionLabel index="04">Key Features</SectionLabel>
+      <SectionLabel index={index}>{title}</SectionLabel>
+
+      <div style={{ marginTop: '3.5rem' }}>
+        {phases.map((p, i) => (
+          <motion.div
+            key={i}
+            variants={fadeUp}
+            style={{ display: 'flex', gap: 22, paddingBottom: i === phases.length - 1 ? 0 : 34 }}
+          >
+            {/* Rail */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+              <div style={{
+                width: 13, height: 13, borderRadius: '50%',
+                background: 'var(--bg)', border: '2px solid var(--accent-green)',
+                marginTop: 5, boxShadow: '0 0 12px rgba(110,255,42,0.35)', flexShrink: 0,
+              }} />
+              {i < phases.length - 1 && (
+                <div style={{ width: 1, flex: 1, background: 'var(--border)', marginTop: 6 }} />
+              )}
+            </div>
+
+            {/* Content */}
+            <div style={{ paddingBottom: 2 }}>
+              {(p.date || p.tag) && (
+                <span style={{
+                  fontFamily:    'var(--font-space-grotesk)',
+                  fontSize:      '0.62rem',
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  color:         'var(--accent-green)',
+                  display:       'block',
+                  marginBottom:  '0.5rem',
+                }}>
+                  {p.date}{p.date && p.tag ? '  ·  ' : ''}{p.tag}
+                </span>
+              )}
+              <h3 style={{
+                fontFamily:    'var(--font-syne)',
+                fontSize:      'clamp(1.15rem, 2vw, 1.6rem)',
+                fontWeight:    700,
+                letterSpacing: '-0.01em',
+                color:         'var(--fg)',
+                marginBottom:  '0.6rem',
+                lineHeight:    1.2,
+              }}>
+                {p.label}
+              </h3>
+              <p style={{
+                fontFamily: 'var(--font-space-grotesk)',
+                fontSize:   'clamp(0.92rem, 1.15vw, 1.05rem)',
+                fontWeight: 300,
+                color:      'rgba(242,240,236,0.6)',
+                lineHeight: 1.8,
+                maxWidth:   '70ch',
+              }}>
+                {p.body}
+              </p>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </motion.section>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// BEFORE / AFTER  (paired comparison rows)
+// ═══════════════════════════════════════════════════════════════════════════════
+function BeforeAfterSection({ rows, intro, index, title }: { rows: BeforeAfterRow[]; intro?: string; index: string; title: string }) {
+  return (
+    <motion.section
+      variants={stagger} initial="hidden" whileInView="show" viewport={inView}
+      className="px-8 md:px-24 py-20"
+      style={{ borderBottom: '1px solid var(--border)' }}
+    >
+      <SectionLabel index={index}>{title}</SectionLabel>
+
+      {intro && (
+        <motion.p variants={fadeUp} style={{
+          fontFamily: 'var(--font-space-grotesk)',
+          fontSize:   'clamp(1rem, 1.3vw, 1.15rem)',
+          fontWeight: 300,
+          color:      'rgba(242,240,236,0.55)',
+          lineHeight: 1.8,
+          marginTop:  '1.5rem',
+          maxWidth:   '60ch',
+        }}>
+          {intro}
+        </motion.p>
+      )}
+
+      <div className="mt-12" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {rows.map((r, i) => (
+          <motion.div key={i} variants={fadeUp} style={{
+            border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden',
+          }}>
+            {/* Row label */}
+            <div style={{
+              padding:       '10px 18px',
+              borderBottom:  '1px solid var(--border)',
+              fontFamily:    'var(--font-space-grotesk)',
+              fontSize:      '0.62rem',
+              letterSpacing: '0.16em',
+              textTransform: 'uppercase',
+              color:         'rgba(242,240,236,0.5)',
+            }}>
+              {r.label}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr]">
+              {/* Before */}
+              <div style={{ padding: '18px 20px' }}>
+                <span style={{
+                  fontFamily:    'var(--font-space-grotesk)',
+                  fontSize:      '0.58rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color:         'var(--accent-rose)',
+                  display:       'block',
+                  marginBottom:  '0.6rem',
+                }}>
+                  Before
+                </span>
+                <p style={{
+                  fontFamily: 'var(--font-space-grotesk)',
+                  fontSize:   '0.92rem',
+                  fontWeight: 300,
+                  color:      'rgba(242,240,236,0.45)',
+                  lineHeight: 1.7,
+                }}>
+                  {r.before}
+                </p>
+              </div>
+
+              {/* Arrow */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '0 14px', color: 'var(--accent-green)', fontSize: '1.1rem',
+              }}>
+                <span className="hidden md:inline">→</span>
+                <span className="md:hidden">↓</span>
+              </div>
+
+              {/* After */}
+              <div style={{ padding: '18px 20px', background: 'rgba(110,255,42,0.02)' }}>
+                <span style={{
+                  fontFamily:    'var(--font-space-grotesk)',
+                  fontSize:      '0.58rem',
+                  letterSpacing: '0.2em',
+                  textTransform: 'uppercase',
+                  color:         'var(--accent-green)',
+                  display:       'block',
+                  marginBottom:  '0.6rem',
+                }}>
+                  After
+                </span>
+                <p style={{
+                  fontFamily: 'var(--font-space-grotesk)',
+                  fontSize:   '0.92rem',
+                  fontWeight: 300,
+                  color:      'rgba(242,240,236,0.75)',
+                  lineHeight: 1.7,
+                }}>
+                  {r.after}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </motion.section>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// METRICS  (impact numbers)
+// ═══════════════════════════════════════════════════════════════════════════════
+function MetricsSection({ items, index, title }: { items: Metric[]; index: string; title: string }) {
+  return (
+    <motion.section
+      variants={stagger} initial="hidden" whileInView="show" viewport={inView}
+      className="px-8 md:px-24 py-20"
+      style={{ borderBottom: '1px solid var(--border)' }}
+    >
+      <SectionLabel index={index}>{title}</SectionLabel>
+
+      <div style={{
+        marginTop: '3rem',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: 14,
+      }}>
+        {items.map((m, i) => (
+          <motion.div key={i} variants={fadeUp} style={{
+            border: '1px solid var(--border)', borderRadius: 12,
+            padding: '24px 20px', background: 'rgba(242,240,236,0.015)',
+          }}>
+            <div style={{
+              fontFamily:    'var(--font-syne)',
+              fontSize:      'clamp(1.9rem, 4vw, 2.9rem)',
+              fontWeight:    800,
+              letterSpacing: '-0.02em',
+              lineHeight:    1,
+              color:         'var(--accent-green)',
+            }}>
+              {m.value}
+            </div>
+            <div style={{
+              fontFamily:    'var(--font-space-grotesk)',
+              fontSize:      '0.72rem',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color:         'var(--fg)',
+              marginTop:     12,
+            }}>
+              {m.label}
+            </div>
+            {m.sub && (
+              <div style={{
+                fontFamily: 'var(--font-space-grotesk)',
+                fontSize:   '0.7rem',
+                fontWeight: 300,
+                color:      'rgba(242,240,236,0.4)',
+                marginTop:  5,
+                lineHeight: 1.5,
+              }}>
+                {m.sub}
+              </div>
+            )}
+          </motion.div>
+        ))}
+      </div>
+    </motion.section>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SYSTEM MAP  (multi-repo overview)
+// ═══════════════════════════════════════════════════════════════════════════════
+function SystemMapSection({ repos, body, index, title }: { repos: RepoNode[]; body?: string; index: string; title: string }) {
+  const accentColor = (a?: RepoNode['accent']) =>
+    a === 'green' ? 'var(--accent-green)' : a === 'rose' ? 'var(--accent-rose)' : 'var(--fg)'
+
+  return (
+    <motion.section
+      variants={stagger} initial="hidden" whileInView="show" viewport={inView}
+      className="px-8 md:px-24 py-20"
+      style={{ borderBottom: '1px solid var(--border)' }}
+    >
+      <SectionLabel index={index}>{title}</SectionLabel>
+
+      {body && (
+        <motion.p variants={fadeUp} style={{
+          fontFamily: 'var(--font-space-grotesk)',
+          fontSize:   'clamp(1rem, 1.3vw, 1.15rem)',
+          fontWeight: 300,
+          color:      'rgba(242,240,236,0.6)',
+          lineHeight: 1.8,
+          marginTop:  '1.5rem',
+          maxWidth:   '70ch',
+        }}>
+          {body}
+        </motion.p>
+      )}
+
+      <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-5">
+        {repos.map((r, i) => (
+          <motion.div key={i} variants={fadeUp} style={{
+            border:       '1px solid var(--border)',
+            borderTop:    `2px solid ${accentColor(r.accent)}`,
+            borderRadius: 12,
+            padding:      '22px 22px 24px',
+            background:   'rgba(242,240,236,0.015)',
+            display:      'flex',
+            flexDirection:'column',
+            gap:          10,
+          }}>
+            <span style={{
+              fontFamily:    'var(--font-syne)',
+              fontSize:      '1.05rem',
+              fontWeight:    700,
+              letterSpacing: '-0.01em',
+              color:         accentColor(r.accent),
+            }}>
+              {r.name}
+            </span>
+            <p style={{
+              fontFamily: 'var(--font-space-grotesk)',
+              fontSize:   '0.85rem',
+              fontWeight: 300,
+              color:      'rgba(242,240,236,0.6)',
+              lineHeight: 1.6,
+              minHeight:  '2.6em',
+            }}>
+              {r.role}
+            </p>
+            <div className="flex flex-wrap gap-2" style={{ marginTop: 'auto' }}>
+              {r.stack.map((tech) => (
+                <span key={tech} style={{
+                  fontFamily:    'var(--font-space-grotesk)',
+                  fontSize:      '0.62rem',
+                  fontWeight:    500,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color:         'rgba(242,240,236,0.65)',
+                  border:        '1px solid var(--border)',
+                  borderRadius:  999,
+                  padding:       '2px 9px',
+                }}>
+                  {tech}
+                </span>
+              ))}
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </motion.section>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// KEY FEATURES  (split-view alternating)
+// ═══════════════════════════════════════════════════════════════════════════════
+function FeaturesSection({ items, index, title }: { items: ProjectFeature[]; index: string; title: string }) {
+  return (
+    <motion.section
+      variants={stagger} initial="hidden" whileInView="show" viewport={inView}
+      className="px-8 md:px-24 py-20"
+      style={{ borderBottom: '1px solid var(--border)' }}
+    >
+      <SectionLabel index={index}>{title}</SectionLabel>
 
       <div className="mt-14 space-y-24">
-        {project.features.map((feat, i) => (
+        {items.map((feat, i) => (
           <FeatureRow key={i} feature={feat} index={i} />
         ))}
       </div>
@@ -760,7 +1176,7 @@ function FlipCard({ front, back, label, alt }: { front: string; back: string; la
   )
 }
 
-function FeatureRow({ feature, index }: { feature: { title: string; description: string; image?: string; images?: string[]; tag?: string; layout?: 'landscape' | 'portrait' }; index: number }) {
+function FeatureRow({ feature, index }: { feature: ProjectFeature; index: number }) {
   const isEven = index % 2 === 0
   const isPortrait = feature.layout === 'portrait'
   const hasCarousel = feature.images && feature.images.length > 1
@@ -888,11 +1304,10 @@ function FeatureRow({ feature, index }: { feature: { title: string; description:
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SECTION 5 — CODE
+// CODE
 // ═══════════════════════════════════════════════════════════════════════════════
-function CodeSection({ project }: { project: Project }) {
+function CodeSection({ tabs, index, title }: { tabs: CodeTab[]; index: string; title: string }) {
   const [activeTab, setActiveTab] = React.useState(0)
-  const tabs = project.codeTabs
   const active = tabs[activeTab]
 
   return (
@@ -900,7 +1315,7 @@ function CodeSection({ project }: { project: Project }) {
       variants={stagger} initial="hidden" whileInView="show" viewport={inView}
       className="px-8 md:px-24 py-20"
     >
-      <SectionLabel index="05">Implementation</SectionLabel>
+      <SectionLabel index={index}>{title}</SectionLabel>
 
       <motion.div variants={fadeUp} className="mt-10">
         <CodeBlock
@@ -1026,7 +1441,7 @@ function CodeBlock({ code, language, caption, tabs, activeTab, onTabChange }: {
   )
 }
 
-// ─── Token-level syntax highlighter (TS / JS / Go / Python) ───────────────────
+// ─── Token-level syntax highlighter (TS / JS / Go / Python / PHP) ─────────────
 function tokenizeLine(line: string): string {
   // Color palette
   const C = {
@@ -1052,6 +1467,11 @@ function tokenizeLine(line: string): string {
   const src = line
 
   while (i < src.length) {
+    // PHP variable $foo
+    if (src[i] === '$') {
+      const m = src.slice(i).match(/^\$[A-Za-z_]\w*/)
+      if (m) { tokens.push({ text: m[0], color: C.builtin }); i += m[0].length; continue }
+    }
     // Decorator @Foo
     if (src[i] === '@') {
       const m = src.slice(i).match(/^@[A-Za-z_]\w*/)
@@ -1071,17 +1491,17 @@ function tokenizeLine(line: string): string {
       if (m) { tokens.push({ text: m[0], color: C.number }); i += m[0].length; continue }
     }
     // Word (keyword / builtin / type / identifier)
-    if (/[A-Za-z_$]/.test(src[i])) {
-      const m = src.slice(i).match(/^[A-Za-z_$][\w$]*/)!
+    if (/[A-Za-z_]/.test(src[i])) {
+      const m = src.slice(i).match(/^[A-Za-z_][\w]*/)!
       const w = m[0]
       const KEYWORDS = new Set(['const','let','var','function','async','await','return',
         'class','extends','implements','interface','type','enum','import','export',
         'from','default','new','this','super','if','else','for','while','do','try',
         'catch','finally','throw','in','of','instanceof','typeof','void','delete',
         'static','public','private','protected','readonly','abstract','override',
-        'namespace','module','declare','as','is','keyof','infer','never'])
+        'namespace','module','declare','as','is','keyof','infer','never','use'])
       const BUILTINS = new Set(['true','false','null','undefined','Promise','Array',
-        'Object','string','number','boolean','any','unknown','never'])
+        'Object','string','number','boolean','any','unknown'])
       if (KEYWORDS.has(w))  tokens.push({ text: w, color: C.keyword })
       else if (BUILTINS.has(w)) tokens.push({ text: w, color: C.builtin })
       else tokens.push({ text: w, color: C.plain })

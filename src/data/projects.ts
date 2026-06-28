@@ -33,6 +33,43 @@ export interface ProjectFeature {
   layout?:     'landscape' | 'portrait'  // image orientation — defaults to 'landscape'
 }
 
+// ─── Architecture diagram (a project may have several — e.g. multi-repo) ──────
+export interface ArchDiagram {
+  title?:   string
+  nodes:    ArchNode[]
+  edges?:   ArchEdge[]
+  scopes?:  ArchScope[]
+}
+
+// ─── Code tab ─────────────────────────────────────────────────────────────────
+export interface CodeTab {
+  filename:  string       // e.g. "tenant.middleware.ts"
+  code:      string
+  language?: string
+  caption?:  string
+}
+
+// ─── Composable detail blocks ─────────────────────────────────────────────────
+// A project's detail page is an ordered list of blocks. The hero renders first
+// (from the meta below); everything after is composed from `blocks`. The newer
+// block types (timeline / beforeAfter / metrics / systemMap) let very different
+// projects tell very different stories without a single fixed narrative arc.
+export interface TimelinePhase  { label: string; date?: string; body: string; tag?: string }
+export interface BeforeAfterRow { label: string; before: string; after: string }
+export interface Metric         { value: string; label: string; sub?: string }
+export interface RepoNode       { name: string; role: string; stack: string[]; accent?: 'green' | 'rose' | 'plain' }
+
+export type Block =
+  | { type: 'summary';      title?: string; body: string }
+  | { type: 'challenge';    title?: string; body: string }
+  | { type: 'architecture'; title?: string; body: string; diagrams?: ArchDiagram[] }
+  | { type: 'features';     title?: string; items: ProjectFeature[] }
+  | { type: 'code';         title?: string; tabs: CodeTab[] }
+  | { type: 'timeline';     title?: string; phases: TimelinePhase[] }
+  | { type: 'beforeAfter';  title?: string; intro?: string; rows: BeforeAfterRow[] }
+  | { type: 'metrics';      title?: string; items: Metric[] }
+  | { type: 'systemMap';    title?: string; body?: string; repos: RepoNode[] }
+
 // ─── Main Project type ─────────────────────────────────────────────────────────
 export interface Project {
   slug:     string
@@ -40,38 +77,29 @@ export interface Project {
   title:    string
   tagline:  string       // one-liner shown in carousel + hero
 
-  // ── Executive Summary sidebar ─────────────────────────────────────────────
+  // ── Meta (carousel card + Executive Summary sidebar) ──────────────────────
   role:     string       // e.g. "Lead Backend Engineer"
   year:     string       // e.g. "2024"
   industry: string       // e.g. "FinTech · B2B SaaS"
   heroImage?:  string    // single hero image (legacy)
   heroImages?: string[]  // auto-fading carousel of hero images
-
-  // ── Stack ─────────────────────────────────────────────────────────────────
+  accent?:     string    // brand primary color — tints the hero atmosphere glow (defaults to accent-green)
   stack: string[]
 
-  // ── Section: Executive Summary ─────────────────────────────────────────────
-  summary: string        // 2-3 sentence overview (distinct from tagline)
+  // ── Detail composition ────────────────────────────────────────────────────
+  // New projects author `blocks` directly. Legacy projects keep the flat fields
+  // below and the renderer auto-composes them into the default block order.
+  blocks?: Block[]
 
-  // ── Section: The Challenge ────────────────────────────────────────────────
-  problem: string        // business language, no jargon
-
-  // ── Section: Architecture ─────────────────────────────────────────────────
-  architecture: string   // prose explanation of the pattern used
-  archNodes?:   ArchNode[]
-  archEdges?:   ArchEdge[]
-  archScopes?:  ArchScope[]
-
-  // ── Section: Key Features (split-view) ────────────────────────────────────
-  features: ProjectFeature[]
-
-  // ── Section: Code (tabbed viewer) ──────────────────────────────────────────
-  codeTabs: {
-    filename: string       // e.g. "tenant.middleware.ts"
-    code:     string
-    language?: string
-    caption?:  string
-  }[]
+  // ── Legacy flat fields (auto-composed when `blocks` is absent) ─────────────
+  summary?:      string
+  problem?:      string
+  architecture?: string
+  archNodes?:    ArchNode[]
+  archEdges?:    ArchEdge[]
+  archScopes?:   ArchScope[]
+  features?:     ProjectFeature[]
+  codeTabs?:     CodeTab[]
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -348,81 +376,430 @@ while (candidate) {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PROJECT 02 — TallerUp (skeleton — details pending)
+  // PROJECT 02 — TallerUp (multi-repo SaaS — composable blocks)
   // ═══════════════════════════════════════════════════════════════════════════
   {
     slug:    'tallerup',
     index:   '02',
     title:   'TallerUp',
-    tagline: 'Workshop management platform for automotive repair shops — scheduling, diagnostics, and real-time job tracking.',
+    tagline: 'Workshop-management SaaS for franchising auto-repair shops — one Laravel API feeding an Angular advisor suite and an Ionic technician app.',
 
     role:     'Full-Stack Engineer',
-    year:     '2025',
-    industry: 'Automotive · SaaS',
+    year:     '2025–26',
+    industry: 'Automotive · SaaS · Franchising',
 
-    summary:
-      'Case study in progress. Technical documentation is being prepared.',
+    // Color de marca de TallerUp (negro + amarillo/ámbar) — tiñe el glow atmosférico del hero
+    accent:   '#F5B301',
 
-    stack: [
-      'NestJS', 'PostgreSQL', 'Next.js 14', 'React Native',
-      'Prisma', 'Socket.io', 'Docker',
+    // Carrusel hero (landscape 3/2). TODO: reemplazar image404.avif por capturas reales.
+    heroImages: [
+      '/images/projects/image404.avif', // IMAGEN 1 (hero): el Wizard del Asesor en uso — la cara más vistosa de la web (paso Cotizar / Detalle con servicios y refacciones)
+      '/images/projects/image404.avif', // IMAGEN 2 (hero): módulo de Refaccionaria/Precotizaciones — listado/creación de una nota de cotización
+      '/images/projects/image404.avif', // IMAGEN 3 (hero): app móvil del técnico (Ionic) — pantalla de revisión con servicios clasificados por tipo
     ],
 
-    problem:
-      'Case study details coming soon.',
+    stack: [
+      'Laravel 10', 'PHP 8.1', 'MariaDB', 'Blade',
+      'Angular 19', 'Angular Material', 'RxJS',
+      'Ionic 8', 'Capacitor 7', 'SQLite', 'jsPDF', 'Vite',
+    ],
 
-    architecture:
-      'Case study details coming soon.',
-
-    features: [],
-
-    codeTabs: [
+    blocks: [
+      // ── 01 · Executive Summary ──────────────────────────────────────────────
       {
-        filename: 'coming-soon.ts',
-        language: 'typescript',
-        caption:  'Code samples are being prepared for this case study.',
-        code: `// TallerUp — Case Study in Progress
-// Technical documentation coming soon.`,
+        type: 'summary',
+        body:
+          'TallerUp is a production SaaS that runs the full day-to-day operation of franchising auto-repair shops, built as three repositories around a single API: a Laravel 10 / MariaDB backend, an Angular 19 web suite for advisors and parts staff, and an Ionic + Capacitor app for technicians on the shop floor. I joined late — the system was already months in and live — and over roughly seven months went from fixing and finishing inherited modules to leading a core refactor that turned a rigid, linear flow into one that models how a workshop actually works: a recursive tree of services and diagnostics. I own the parts-quoting, advisor wizard, manual-quote, support and payments modules end to end.',
+      },
+
+      // ── 02 · System Overview (multi-repo) ───────────────────────────────────
+      {
+        type: 'systemMap',
+        title: 'System Overview',
+        body:
+          'A single Laravel API is the source of truth for two very different clients. Everything below shares one MariaDB schema that I reshaped from a flat layout into a hierarchical, versioned model.',
+        repos: [
+          { name: 'API-TallerUp',   role: 'Central REST API · server-side PDF · source of truth', stack: ['Laravel 10', 'PHP 8.1', 'MariaDB', 'Blade'],            accent: 'green' },
+          { name: 'TallerUp · web', role: 'Advisor, parts & admin suite',                          stack: ['Angular 19', 'Material', 'FullCalendar', 'jsPDF'],       accent: 'plain' },
+          { name: 'tallerup-movil', role: 'On-floor technician app',                               stack: ['Ionic 8', 'Capacitor 7', 'SQLite', 'Camera'],            accent: 'plain' },
+        ],
+      },
+
+      // ── 03 · The Challenge ──────────────────────────────────────────────────
+      {
+        type: 'challenge',
+        body:
+          'The shop wanted to retire a process built on Excel templates for quotes and final invoices — but the real problem was not the format, it was the flow. The software was strictly linear; the workshop is recursive. A car comes in for a main service; the technician recommends extra services and requests parts; among them he may suggest a diagnostic — and a diagnostic spawns new services and new diagnostics, which spawn more, as deep as the job requires. The parts clerk quotes each part (original, generic, aftermarket); the advisor negotiates with the customer and approves partially, totally, or in a mix. The inherited structure supported none of that recursion, tolerated human error poorly, and forced corrections to be made by hand directly in the production database.',
+      },
+
+      // ── 04 · Evolution (timeline) ───────────────────────────────────────────
+      {
+        type: 'timeline',
+        title: 'Evolution',
+        phases: [
+          {
+            label: 'Parts module, reborn',
+            date:  'Aug–Oct 2025',
+            tag:   'Refaccionaria',
+            body:  'Rebuilt the parts-clerk pre-quote module: brand identity, tabbed forms, part-number autocomplete, packages, and mixed quotes — wiring it cleanly into the advisor flow.',
+          },
+          {
+            label: 'Advisor flow & Final Note',
+            date:  'Oct 2025',
+            tag:   'Asesor',
+            body:  'Closed the advisor’s first complete flow (approve partial / total, reject) and designed the Final Note PDF from scratch with a corporate refresh — Blade templates rewritten into a dynamic, reusable note engine.',
+          },
+          {
+            label: 'Manual Quotes & Payments',
+            date:  'Oct–Nov 2025',
+            tag:   'New modules',
+            body:  'Shipped Manual Quotes — quoting without an appointment or work order, the Excel killer, now persisted and searchable — and a full Payments module: multiple methods, partial payments, printable receipts, automatic order status.',
+          },
+          {
+            label: 'Hierarchical refactor',
+            date:  'Nov 2025',
+            tag:   'Schema',
+            body:  'Restructured pre-quotes from a flat schema into a hierarchical, service-based model and added profit-margin pricing — the groundwork for everything that followed.',
+          },
+          {
+            label: 'Support module',
+            date:  'Jan–Feb 2026',
+            tag:   'Soporte',
+            body:  'Built the Support module so advisors could do what previously required raw DB edits: reopen orders, add services / diagnostics / parts, attach before-and-after evidence, all with user-level audit traceability.',
+          },
+          {
+            label: 'The Advisor Wizard',
+            date:  'Feb–Mar 2026',
+            tag:   'Core refactor',
+            body:  'The centerpiece: replaced the overloaded advisor screen with a guided wizard backed by new normalized tables (final notes, quotes, cost modes). Unlimited, fully versioned notes; inline parts quoting by type; granular and total discounts.',
+          },
+          {
+            label: 'Recursive operation',
+            date:  'Mar 2026',
+            tag:   'Core',
+            body:  'With the core reshaped, services and diagnostics can finally be added at any time and nest recursively — matching real operation, and unblocking the loyalty and quality-call modules the team built on top.',
+          },
+        ],
+      },
+
+      // ── 05 · Before / After ─────────────────────────────────────────────────
+      {
+        type: 'beforeAfter',
+        title: 'Before / After',
+        intro: 'What the refactor changed, in concrete terms.',
+        rows: [
+          {
+            label:  'Operation flow',
+            before: 'Linear, single-pass — services and diagnostics could not be added once the order moved on.',
+            after:  'Recursive tree — a diagnostic spawns services and more diagnostics, at any depth, at any time.',
+          },
+          {
+            label:  'Parts quoting',
+            before: 'Up to three separate notes (original / generic / aftermarket) — confusing and error-prone.',
+            after:  'A single note; the advisor composes the mix (partial / total / mixed) in the wizard.',
+          },
+          {
+            label:  'Quote versions',
+            before: 'Capped at ~4 editable notes; reverting meant re-editing from memory.',
+            after:  'Unlimited and fully versioned — any version can be branched into a new one; full history kept.',
+          },
+          {
+            label:  'Corrections',
+            before: 'Made by hand, directly in the production database.',
+            after:  'Self-service in the Support module, with user-level audit trails.',
+          },
+          {
+            label:  'Quotes & invoices',
+            before: 'Excel templates, scattered across computers, no persistence.',
+            after:  'Centralized, searchable, downloadable PDFs — manual quotes even without a work order.',
+          },
+        ],
+      },
+
+      // ── 06 · Architecture ───────────────────────────────────────────────────
+      {
+        type: 'architecture',
+        body:
+          'The API is a Laravel 10 monolith with domain-oriented controllers over MariaDB, serving REST to both clients; quotes and notes are rendered server-side as PDFs via Blade. The decisive change was the data model: it evolved from a flat layout into a hierarchical, versioned one — services own parts, parts roll up into quotes, quotes freeze into final notes — with a link from diagnostics back to new services so the service / diagnostic tree can grow without bound.',
+        diagrams: [
+          {
+            nodes: [
+              { id: 'mobile', label: 'Technician',        sublabel: 'Ionic app',          type: 'client',  col: 0, row: 0 },
+              { id: 'web',    label: 'Advisor · Parts',   sublabel: 'Angular suite',      type: 'client',  col: 0, row: 1 },
+              { id: 'api',    label: 'Laravel API',       sublabel: 'REST · controllers', type: 'gateway', col: 1, row: 0 },
+              { id: 'pdf',    label: 'PDF Engine',        sublabel: 'Blade notes',        type: 'service', col: 1, row: 1 },
+              { id: 'core',   label: 'Service ↔ Diag.',   sublabel: 'recursive tree',     type: 'service', col: 2, row: 0 },
+              { id: 'db',     label: 'MariaDB',           sublabel: 'hierarchical schema', type: 'db',     col: 2, row: 1 },
+            ],
+            edges: [
+              { from: 'mobile', to: 'api',  label: 'REST'        },
+              { from: 'web',    to: 'api',  label: 'REST'        },
+              { from: 'api',    to: 'pdf',  label: 'render',  dashed: true },
+              { from: 'api',    to: 'core', label: 'orchestrates' },
+              { from: 'core',   to: 'db',   label: 'nested svc/diag', bidir: true },
+            ],
+            scopes: [
+              { label: 'Hierarchical core (the refactor)', nodeIds: ['core', 'db'] },
+            ],
+          },
+        ],
+      },
+
+      // ── 07 · Key Features ───────────────────────────────────────────────────
+      {
+        type: 'features',
+        items: [
+          {
+            tag:         'Core · Refactor',
+            title:       'From Linear to Recursive',
+            // IMAGEN: la orden de servicio con su árbol expandido — servicios → diagnósticos → servicios anidados (la vista que evidencia la recursividad del flujo)
+            image:       '/images/projects/image404.avif',
+            description: 'The old schema modeled a straight line: main service → parts → one note. Real jobs branch. I reshaped the model so a diagnostic can spawn new services and new diagnostics, recursively, and so services and parts can be added to an order at any point in its life. This single change is what unblocked manual corrections, mid-job up-sells, and the downstream loyalty and quality-call flows.',
+          },
+          {
+            tag:         'Advisor · Wizard',
+            title:       'The Advisor Wizard',
+            // IMAGEN: un paso del wizard del asesor (p.ej. el paso "Cotizar") mostrando notas versionadas, autorización parcial/total/mixta y la cotización inline de refacciones por tipo
+            image:       '/images/projects/image404.avif',
+            description: 'The advisor screen had grown into an unreadable wall of buttons. I replaced it with a guided wizard: create and version notes without limit, branch any past version into a new one (full history preserved), approve parts partially / totally / mixed, quote parts inline by type, and apply per-service or whole-note discounts with correct IVA handling.',
+          },
+          {
+            tag:         'Operations · Support',
+            title:       'Self-Service Support Module',
+            // IMAGEN: el panel del módulo de Soporte con sus acciones (reabrir orden, agregar servicios/refacciones, cargar evidencias antes/después) y el registro de auditoría por usuario
+            image:       '/images/projects/image404.avif',
+            description: 'Created to replace the “edit the database by hand” workflow. Advisors can reopen orders, add or swap services, add parts, change an order’s main service, upload before / after photo evidence with safe server-side image processing, and delete a final note — every action written to an audit log with the user who performed it.',
+          },
+          {
+            tag:         'Quotes · Persistence',
+            title:       'Manual Quotes — the Excel Killer',
+            // IMAGEN: el módulo de Cotización Manual — formulario/listado de una cotización creada sin orden de servicio, idealmente con el PDF descargable visible
+            image:       '/images/projects/image404.avif',
+            description: 'A full CRUD module to produce a quote — or a final note — with no appointment and no work order behind it, for the cases the rigid flow could not express. IVA toggle, soft-delete, conversion into a final note, and payment generation straight from the quote. Everything is centralized, searchable and downloadable as PDF.',
+          },
+          {
+            tag:         'Payments',
+            title:       'Payments & Receipts',
+            // IMAGEN: el módulo de Cobros — registro de un pago con múltiples métodos y/o el ticket de cobro imprimible
+            image:       '/images/projects/image404.avif',
+            description: 'An end-to-end payments module: multiple payment methods, partial payments tracked against an order, a printable cobro ticket, and automatic promotion of the order status once the balance is settled — backed by dedicated tables for payments, methods and statuses.',
+          },
+          {
+            tag:         'Mobile · Technician',
+            title:       'Classified Services & Safety Semaphore',
+            // IMAGEN (vertical/celular): pantalla de la app móvil del técnico (Ionic) — la lista de servicios agrupados por clasificación y los puntos de seguridad tipo semáforo
+            layout:      'portrait',
+            image:       '/images/projects/image404.avif',
+            description: 'For the technician app (TallerUp Móvil V2) I built the API that serves services grouped and ordered by classification — main, additional, diagnostics — instead of one flat list, plus traffic-light style safety-point fields, so marking each inspection point feels natural on the shop floor.',
+          },
+        ],
+      },
+
+      // ── 08 · Impact ─────────────────────────────────────────────────────────
+      {
+        type: 'metrics',
+        title: 'Impact',
+        items: [
+          { value: 'O(1)', label: 'Recursive Levels',   sub: 'Infinite support for nested sub-diagnostics and additional services' },
+          { value: '66%',  label: 'Friction Reduction',  sub: 'Three parts quotes unified into a single master note (Wizard)' },
+          { value: '∞',    label: 'Version Control',     sub: 'From destructive overwrites to a complete, branchable note history' },
+          { value: '-60%', label: 'DB Load (Calendar)',  sub: 'Triple-fetch eliminated and critical tables indexed' },
+        ],
+      },
+
+      // ── 09 · Implementation ─────────────────────────────────────────────────
+      {
+        type: 'code',
+        title: 'Implementation',
+        tabs: [
+          {
+            filename: 'calculos-nota.ts',
+            language: 'typescript',
+            caption:  'Wizard engine — collapses the legacy three parts-notes (original / generic / aftermarket) into ONE master note: a single-pass fold of labour + selected parts, then a granular per-service discount layer, then a global discount, all resolved against the correct IVA base.',
+            code: `const IVA_RATE = 0.16;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Collapses what used to be three separate parts notes (original / generic /
+ * aftermarket) into ONE master note: every line is summed in a single pass,
+ * per-service discounts are applied, then a global discount, then the IVA base.
+ */
+export function calcularResumen(
+  orden: OrdenInfo,
+  servicios: ServicioUnificado[],
+  comodin: { activo: boolean; monto: number },
+  general: { activo: boolean; esFijo: boolean; cantidad: number; porcentaje: number },
+  descuentos: DescuentoServicio[],
+): ResumenCalculado {
+  // Principal price net of IVA: with a global discount we start from the pre-promo
+  // base so the discount lands on it; otherwise we keep the promo price already
+  // applied. (+value coerces the string decimals Laravel emits in JSON.)
+  const principal = general.activo
+    ? +(orden.n_precio_servicio_sin_descuento || 0) || +orden.total_servicio_principal / (1 + IVA_RATE)
+    : +(orden.n_precio_servicio_con_descuento || 0) || +orden.total_servicio_principal / (1 + IVA_RATE);
+
+  // Fold every additional line (labour + selected parts) in one pass.
+  const { manoObra, refacciones } = servicios.reduce(
+    (acc, s) => ({
+      manoObra:    acc.manoObra    + (s.n_costo_mano_obra_editable ?? s.costo_mano_obra),
+      refacciones: acc.refacciones + (s.subtotal_refacciones_seleccionadas ?? 0),
+    }),
+    { manoObra: 0, refacciones: 0 },
+  );
+
+  let neto = principal + manoObra + refacciones + (comodin.activo ? comodin.monto : 0);
+
+  // Per-service discounts (principal included): each against its own base.
+  const descServicios = descuentos.reduce(
+    (sum, d) => sum + (d.esFijo ? d.monto : (d.totalServicio * d.porcentaje) / 100),
+    0,
+  );
+  neto -= descServicios;
+
+  // Global discount over the running net subtotal.
+  const descGeneral = !general.activo ? 0
+    : general.esFijo ? general.cantidad
+    : (neto * general.porcentaje) / 100;
+  neto -= descGeneral;
+
+  const iva = neto * IVA_RATE;
+  return {
+    subtotal_servicio_principal:    round2(principal),
+    subtotal_servicios_adicionales: round2(manoObra),
+    subtotal_refacciones:           round2(refacciones),
+    descuento_adicional_total:      round2(descServicios),
+    descuento_general_total:        round2(descGeneral),
+    subtotal_neto:                  round2(neto),
+    iva:                            round2(iva),
+    total:                          round2(neto + iva),
+  };
+}`,
+          },
+          {
+            filename: 'DiagnosticTreeService.php',
+            language: 'php',
+            caption:  'Recursive operation — a diagnostic spawns services and each service can spawn further diagnostics, with no depth limit. Two flat queries are indexed by parent and assembled through mutual recursion (nodoServicio ↔ nodoDiagnostico): an N+1-free build of an unbounded tree, kept entirely in memory.',
+            code: `/**
+ * A repair order is not a flat list: a diagnostic can spawn services, and each
+ * service can spawn further diagnostics — with no depth limit. Rather than emit
+ * recursive SQL (N+1), we pull both node types flat in two queries, index them
+ * by parent in memory, and assemble the nested tree in a single pass.
+ */
+public function build(int $idOrdenServicio): array
+{
+    $servicios = DB::table('tw_servicios_sugeridos')
+        ->where('id_orden_servicio', $idOrdenServicio)
+        ->where('b_activo', 1)
+        ->get();
+
+    $diagnosticos = DB::table('tw_diagnosticos_sugeridos')
+        ->where('id_orden_servicio', $idOrdenServicio)
+        ->where('b_activo', 1)
+        ->get();
+
+    // Index children by the parent node that generated them.
+    $serviciosPorDiagnostico = $servicios->groupBy('id_diagnostico_sugerido');
+    $diagnosticosPorServicio = $diagnosticos->groupBy('id_servicio_revision');
+
+    // Roots: services attached to the inspection itself, not to a diagnostic.
+    return $serviciosPorDiagnostico->get(null, collect())
+        ->map(fn ($s) => $this->nodoServicio($s, $serviciosPorDiagnostico, $diagnosticosPorServicio))
+        ->values()
+        ->all();
+}
+
+private function nodoServicio($servicio, $porDiagnostico, $porServicio): array
+{
+    // Every diagnostic raised on this service → recurse into its subtree.
+    $hijos = $porServicio->get($servicio->id_servicio_revision, collect())
+        ->map(fn ($d) => $this->nodoDiagnostico($d, $porDiagnostico, $porServicio));
+
+    return [
+        'id'           => $servicio->id_servicio_sugerido,
+        'tipo'         => 'servicio',
+        'estatus'      => $servicio->id_estatus_servicio_sugerido,
+        'diagnosticos' => $hijos->values()->all(),
+    ];
+}
+
+private function nodoDiagnostico($diagnostico, $porDiagnostico, $porServicio): array
+{
+    // Every service this diagnostic generated → recurse back into services.
+    $hijos = $porDiagnostico->get($diagnostico->id_diagnostico_sugerido, collect())
+        ->map(fn ($s) => $this->nodoServicio($s, $porDiagnostico, $porServicio));
+
+    return [
+        'id'        => $diagnostico->id_diagnostico_sugerido,
+        'tipo'      => 'diagnostico',
+        'estatus'   => $diagnostico->id_estatus_servicio_sugerido,
+        'servicios' => $hijos->values()->all(),
+    ];
+}`,
+          },
+          {
+            filename: 'calendario.component.ts',
+            language: 'typescript',
+            caption:  'Performance — the calendar paginates by visible range and memoizes each range in memory (zero HTTP on revisits); a single batched addEventSource replaces N addEvent calls. This removed the triple-fetch and the O(n) re-render that froze the browser (~60% less DB load).',
+            code: `private readonly cache = new Map<string, EventInput[]>();
+private currentRangeKey = '';
+
+/**
+ * Before: every navigation re-fetched ALL appointments and replayed them with N
+ * individual addEvent() calls — a triple-fetch + O(n) re-render that froze the UI.
+ * After: FullCalendar's datesSet drives range pagination; results are memoized per
+ * visible range and a single addEventSource() commits them in one paint.
+ */
+handleDatesSet({ start, end }: DatesSetArg): void {
+  const from = start.toISOString().slice(0, 10);
+  const to   = new Date(end.getTime() - 86400000).toISOString().slice(0, 10);
+  const key  = \`\${from}_\${to}\`;
+  this.currentRangeKey = key;
+
+  const cached = this.cache.get(key);
+  if (cached) return this.render(cached);            // cache hit → zero HTTP
+
+  this.citasService.getCitas('', from, to).subscribe({
+    next: ({ data = [] }) => {
+      const events = data.map((c: citasModel) => this.toEvent(c));
+      this.cache.set(key, events);
+      this.render(events);
+    },
+    error: (err) => console.error('Error al obtener citas:', err),
+  });
+}
+
+/** One batched commit: clear + single source = a single re-render, not N. */
+private render(events: EventInput[]): void {
+  const api = this.calendarComponent?.getApi();
+  if (!api) return;
+  api.removeAllEvents();
+  api.addEventSource(events);
+}`,
+          },
+        ],
       },
     ],
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PROJECT 03 — VagXpress (skeleton — details pending)
+  // PROJECT 03 — VagXpress (placeholder — case study pending real material)
   // ═══════════════════════════════════════════════════════════════════════════
   {
     slug:    'vagxpress',
     index:   '03',
     title:   'VagXpress',
-    tagline: 'Last-mile logistics and delivery orchestration — route optimization, driver tracking, and proof-of-delivery.',
+    tagline: 'Last-mile logistics & delivery orchestration — case study coming soon.',
 
     role:     'Backend Engineer',
     year:     '2024',
     industry: 'Logistics · B2B',
 
-    summary:
-      'Case study in progress. Technical documentation is being prepared.',
+    stack: ['Node.js', 'Express', 'MongoDB', 'Redis', 'Docker'],
 
-    stack: [
-      'Node.js', 'Express', 'MongoDB', 'React',
-      'Redis', 'Docker', 'AWS',
-    ],
-
-    problem:
-      'Case study details coming soon.',
-
-    architecture:
-      'Case study details coming soon.',
-
-    features: [],
-
-    codeTabs: [
+    blocks: [
       {
-        filename: 'coming-soon.ts',
-        language: 'typescript',
-        caption:  'Code samples are being prepared for this case study.',
-        code: `// VagXpress — Case Study in Progress
-// Technical documentation coming soon.`,
+        type: 'summary',
+        body: 'Case study in progress. Technical documentation is being prepared.',
       },
     ],
   },
