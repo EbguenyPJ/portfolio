@@ -111,7 +111,7 @@ export const projects: Project[] = [
     tagline: 'Enterprise B2B SaaS — offline-first POS, cascading pricing engine, and agentic AI orchestration.',
 
     role:     'Full-Stack Engineer',
-    year:     '2026',
+    year:     '2025–26',
     industry: 'Retail Tech · B2B SaaS',
     // Carrusel hero con fade automático — muestra la escala del sistema
     heroImages: [
@@ -121,7 +121,7 @@ export const projects: Project[] = [
     ],
 
     summary:
-      'Nivo is a Turborepo monorepo powering four apps — a NestJS API (190+ source files, 120+ REST endpoints), a Next.js 14 admin + POS, a customer-facing storefront, and a React Native mobile app — all sharing 86 TypeORM entities across isolated PostgreSQL databases per tenant. I designed and built the database-per-tenant middleware with sub-2 ms connection pooling, a 3-level cascading pricing engine that eliminates thousands of redundant price rows, an offline-first POS sync pipeline via Dexie.js, and Nibbit — an agentic AI assistant powered by Gemini with 14 function-calling tools that drafts purchase requisitions and supplier emails autonomously.',
+      'Nivo is a Turborepo monorepo powering five apps — a NestJS API (190+ source files, 120+ REST endpoints), a Next.js 14 admin + POS, a customer-facing storefront, and two React Native mobile apps — all sharing 84 TypeORM entities across isolated PostgreSQL databases per tenant. I designed and built the database-per-tenant middleware with in-memory connection pooling (each tenant\'s DataSource is created once and reused for every request after), a 3-level cascading pricing engine that eliminates thousands of redundant price rows, an offline-first POS sync pipeline via Dexie.js, and Nibbit — an agentic AI assistant powered by Gemini with 14 function-calling tools that drafts purchase requisitions and supplier emails autonomously. Nivo began as my bootcamp capstone: a multi-tenant POS MVP I shipped in three weeks as backend lead and project manager of a team where I was the only trained developer. This monorepo is its second life — a ground-up solo rebuild, every commit mine, of what we used to call "the base of the system of our dreams".',
 
     stack: [
       'NestJS', 'TypeORM', 'PostgreSQL', 'Redis',
@@ -132,11 +132,11 @@ export const projects: Project[] = [
 
     // ── The Challenge ──────────────────────────────────────────────────────
     problem:
-      'A growing network of shoe-retail franchises needed one platform that could handle the full complexity of physical retail at scale: a matrix inventory system tracking every size, color, and branch combination across hundreds of thousands of active SKUs; complete tenant-to-tenant data isolation so competing franchises could share infrastructure without ever accessing each other\'s records; an offline-capable POS that guaranteed zero wait times at the counter during connectivity blackouts; a cascading pricing engine flexible enough to compute final prices from global landed-cost bases, per-branch cost overrides, and per-list margin exceptions — all while complying with Mexico\'s strict CFDI electronic invoicing regulations.',
+      'Multi-branch shoe retail is one of the hardest inventory problems in physical commerce. Every product explodes into a matrix — size × color × branch — that quickly multiplies into hundreds of thousands of possible SKU combinations; franchises sharing one platform must never see each other\'s records; the counter cannot stop selling when the connection drops; and the final price of a single shoe depends on global landed-cost bases, per-branch cost overrides, and per-list margin exceptions — all under Mexico\'s strict CFDI electronic-invoicing rules. Nivo was built to hold that entire problem at once, end to end.',
 
     // ── Architecture ──────────────────────────────────────────────────────
     architecture:
-      'Database-per-tenant pattern built on NestJS. A Master PostgreSQL database stores tenant records and Stripe subscriptions. On every request, a custom NestJS middleware extracts the subdomain (e.g. acme.nivo.app), queries the master DB to resolve the tenant, and hands a dedicated TypeORM DataSource for that tenant\'s isolated database to the request pipeline. Connections are pooled in-memory via a Map<string, DataSource>, keeping p99 overhead under 2 ms. Async workloads — tenant provisioning, low-stock alerts, invoice generation, report exports — are handled by BullMQ workers backed by Redis.',
+      'Database-per-tenant pattern built on NestJS. A Master PostgreSQL database stores tenant records and Stripe subscriptions. On every request, a custom NestJS middleware extracts the subdomain (e.g. acme.nivo.app), queries the master DB to resolve the tenant, and hands a dedicated TypeORM DataSource for that tenant\'s isolated database to the request pipeline. Connections are pooled in-memory via a Map<string, DataSource>, so the cost of opening a tenant\'s connection is paid once — not on every request. Async workloads — tenant provisioning, low-stock alerts, invoice generation, report exports — are handled by BullMQ workers backed by Redis.',
 
     // Explicit col/row positions — layered flow diagram
     //
@@ -241,7 +241,7 @@ export const projects: Project[] = [
       {
         filename: 'tenant.middleware.ts',
         language: 'typescript',
-        caption:  'Resolves subdomain to an isolated TypeORM DataSource, pooled in-memory via Map<string, DataSource> for sub-2 ms overhead per request.',
+        caption:  'Resolves subdomain to an isolated TypeORM DataSource, pooled in-memory via Map<string, DataSource> — the connection cost is paid once per tenant, not per request.',
         code: `@Injectable()
 export class TenantConnectionMiddleware implements NestMiddleware {
   constructor(

@@ -18,11 +18,11 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
-  title: 'Ebgueny PJ — Backend Architect',
-  description: 'Senior Backend Architect. Designing systems that handle millions of requests, zero tolerance for failure.',
+  title: 'Ebgueny PJ — Full-Stack Engineer',
+  description: 'ERPs, POS and multi-tenant SaaS in production — Laravel · NestJS · Angular. Architecting the unseen.',
   openGraph: {
-    title: 'Ebgueny PJ — Backend Architect',
-    description: 'Architecting the unseen.',
+    title: 'Ebgueny PJ — Full-Stack Engineer',
+    description: 'The frontend is the vehicle. The backend is the destination.',
     type: 'website',
   },
 }
