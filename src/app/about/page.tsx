@@ -41,7 +41,7 @@ export default function AboutPage() {
               '10+ Years Experience',
               'Puebla, MX (CST)',
               'B2B SaaS',
-              'Full-Stack & Architect',
+              'Full-Stack Engineer',
             ].map((stat) => (
               <span
                 key={stat}
@@ -149,12 +149,12 @@ export default function AboutPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
               { category: 'Languages', items: ['TypeScript', 'JavaScript', 'Java', 'PHP', 'Python', 'C'] },
-              { category: 'Backend', items: ['NestJS', 'Node.js', 'Express', 'Laravel', 'TypeORM', 'Prisma'] },
+              { category: 'Backend', items: ['NestJS', 'Node.js', 'Express', 'Laravel', 'TypeORM', 'Socket.io'] },
               { category: 'Frontend', items: ['Next.js', 'React', 'React Native', 'Angular', 'Tailwind CSS', 'Framer Motion'] },
               { category: 'Data', items: ['PostgreSQL', 'Redis', 'MongoDB', 'MySQL', 'Dexie.js', 'BullMQ'] },
               { category: 'Cloud & Infra', items: ['Docker', 'AWS S3', 'Fedora Linux', 'Nginx', 'GitHub Actions', 'Turborepo'] },
-              { category: 'AI & APIs', items: ['Gemini AI', 'Function Calling', 'Stripe', 'WhatsApp Cloud API', 'Socket.io', 'Swagger'] },
-              { category: 'Patterns', items: ['Multi-Tenant', 'Offline-First', 'Event-Driven', 'CQRS', 'Repository Pattern', 'DDD'] },
+              { category: 'AI & APIs', items: ['Claude API', 'Gemini AI', 'Function Calling', 'RAG', 'Stripe', 'WhatsApp Cloud API'] },
+              { category: 'Patterns', items: ['Multi-Tenant', 'Offline-First', 'Event-Driven', 'Layered Architecture', 'Repository Pattern', 'Facade'] },
               { category: 'Dev Tooling', items: ['Swagger / OpenAPI', 'ESLint / Prettier', 'Webpack', 'Vite', 'Puppeteer', 'Postman'] },
             ].map(({ category, items }) => (
               <div key={category} style={{

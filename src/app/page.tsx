@@ -420,7 +420,7 @@ export default function HomePage() {
               </span>
               <div className="flex flex-col gap-3">
                 {[
-                  { name: '@nivo/database', desc: '86 TypeORM entities · master + tenant schemas' },
+                  { name: '@nivo/database', desc: '84 TypeORM entities · master + tenant schemas' },
                   { name: '@nivo/types',    desc: 'Unified DTOs · shared interfaces across all apps' },
                   { name: '@nivo/ui',       desc: 'Shadcn/ui component library · Tailwind config' },
                   { name: '@nivo/eslint',   desc: 'Shared ESLint rules for consistent code standards' },
@@ -456,7 +456,7 @@ export default function HomePage() {
                 color: 'rgba(242,240,236,0.4)',
                 marginTop: '1.5rem',
               }}>
-                Orchestrated with Turborepo for parallel CI/CD pipelines and remote build caching.
+                Orchestrated with Turborepo — parallel task pipelines with incremental build caching, wired into GitHub Actions CI.
               </p>
             </div>
           </div>
