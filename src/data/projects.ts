@@ -477,7 +477,13 @@ while (candidate) {
             label: 'Recursive operation',
             date:  'Mar 2026',
             tag:   'Core',
-            body:  'With the core reshaped, services and diagnostics can finally be added at any time and nest recursively — matching real operation, and unblocking the loyalty and quality-call modules the team built on top.',
+            body:  'With the core reshaped, services and diagnostics can finally be added at any time and nest recursively — matching real operation, and unblocking the loyalty and quality-call modules the team built on top. Same month: the appointments calendar went from freezing the browser (triple fetch, O(N) re-renders) to a single ranged, cached request.',
+          },
+          {
+            label: 'The handover refactor',
+            date:  'Jun–Jul 2026',
+            tag:   'Ongoing',
+            body:  'My parting deliverable, built on the snapshot I was authorized to keep: the API re-architected into layers (controllers → services → queries) with tests and Sanctum auth, and the Angular services regrouped by domain to mirror it — handed over for the team to adopt at their own pace.',
           },
         ],
       },
@@ -512,6 +518,11 @@ while (candidate) {
             label:  'Quotes & invoices',
             before: 'Excel templates, scattered across computers, no persistence.',
             after:  'Centralized, searchable, downloadable PDFs — manual quotes even without a work order.',
+          },
+          {
+            label:  'Backend changes',
+            before: 'Schema or flow changes rippled straight into the Angular suite.',
+            after:  'Shipped behind stable controller facades — the frontend often needed zero changes.',
           },
         ],
       },
@@ -554,7 +565,7 @@ while (candidate) {
             title:       'From Linear to Recursive',
             // IMAGEN: la orden de servicio con su árbol expandido — servicios → diagnósticos → servicios anidados (la vista que evidencia la recursividad del flujo)
             image:       '/images/projects/image404.avif',
-            description: 'The old schema modeled a straight line: main service → parts → one note. Real jobs branch. I reshaped the model so a diagnostic can spawn new services and new diagnostics, recursively, and so services and parts can be added to an order at any point in its life. This single change is what unblocked manual corrections, mid-job up-sells, and the downstream loyalty and quality-call flows.',
+            description: 'The old schema modeled a straight line: main service → parts → one note. Real jobs branch. I reshaped the quoting-and-notes core and wired the existing service–diagnostic links into a flow that finally works end to end: a diagnostic can spawn new services and new diagnostics, recursively, and services and parts can be added to an order at any point in its life. This is what unblocked manual corrections, mid-job up-sells, and the downstream loyalty and quality-call flows the team built on top.',
           },
           {
             tag:         'Advisor · Wizard',
@@ -600,10 +611,10 @@ while (candidate) {
         type: 'metrics',
         title: 'Impact',
         items: [
-          { value: 'O(1)', label: 'Recursive Levels',   sub: 'Infinite support for nested sub-diagnostics and additional services' },
-          { value: '66%',  label: 'Friction Reduction',  sub: 'Three parts quotes unified into a single master note (Wizard)' },
-          { value: '∞',    label: 'Version Control',     sub: 'From destructive overwrites to a complete, branchable note history' },
-          { value: '-60%', label: 'DB Load (Calendar)',  sub: 'Triple-fetch eliminated and critical tables indexed' },
+          { value: '3 → 1',   label: 'Parts Notes per Quote', sub: 'The wizard collapses original / generic / aftermarket quoting into one master note' },
+          { value: '~4 → ∞',  label: 'Note Versions',         sub: 'From destructive edits on a capped set to unlimited, branchable history' },
+          { value: '1 fetch', label: 'Calendar Load',         sub: 'A browser-freezing triple-fetch with O(N) re-renders became a single ranged, cached request' },
+          { value: '191',     label: 'Commits · 9 Modules',   sub: 'Aug 2025 – Mar 2026, shipped continuously on a live production system' },
         ],
       },
 
@@ -676,70 +687,97 @@ export function calcularResumen(
 }`,
           },
           {
-            filename: 'DiagnosticTreeService.php',
+            filename: 'SoporteService.php',
             language: 'php',
-            caption:  'Recursive operation — a diagnostic spawns services and each service can spawn further diagnostics, with no depth limit. Two flat queries are indexed by parent and assembled through mutual recursion (nodoServicio ↔ nodoDiagnostico): an N+1-free build of an unbounded tree, kept entirely in memory.',
-            code: `/**
- * A repair order is not a flat list: a diagnostic can spawn services, and each
- * service can spawn further diagnostics — with no depth limit. Rather than emit
- * recursive SQL (N+1), we pull both node types flat in two queries, index them
- * by parent in memory, and assemble the nested tree in a single pass.
- */
-public function build(int $idOrdenServicio): array
+            caption:  'Support module (excerpt) — what used to be a raw edit in the production database is now a transactional, audited operation: attaching a new diagnostic to a live order after inspection. The parts log, the safety-point revision update and the new tree node (priced on the spot) commit or roll back as one; every Support action lands in the audit log with the acting user.',
+            code: `public function agregarServicioDiagnostico(Request $request, $id_orden_servicio)
 {
-    $servicios = DB::table('tw_servicios_sugeridos')
-        ->where('id_orden_servicio', $idOrdenServicio)
-        ->where('b_activo', 1)
-        ->get();
+    try {
+        $resultado = DB::transaction(function () use ($request, $id_orden_servicio) {
 
-    $diagnosticos = DB::table('tw_diagnosticos_sugeridos')
-        ->where('id_orden_servicio', $idOrdenServicio)
-        ->where('b_activo', 1)
-        ->get();
+            // Parts the technician asked for → logged against the revision.
+            foreach ($request->refacciones as $refaccionData) {
+                $nuevaBitacora = new ServicioRefaccionBitacora();
+                $nuevaBitacora->id_servicio_revision = $request->id_servicio_revision;
+                $nuevaBitacora->id_orden_servicio    = $id_orden_servicio;
+                $nuevaBitacora->s_refaccion          = $refaccionData['s_refaccion'];
+                $nuevaBitacora->n_cantidad           = $refaccionData['n_cantidad'];
+                $nuevaBitacora->save();
+            }
 
-    // Index children by the parent node that generated them.
-    $serviciosPorDiagnostico = $servicios->groupBy('id_diagnostico_sugerido');
-    $diagnosticosPorServicio = $diagnosticos->groupBy('id_servicio_revision');
+            // The safety-point revision this diagnostic hangs from.
+            $revision = DB::table('tw_revisiones')
+                ->where('id_orden_servicio', $id_orden_servicio)
+                ->where('id_punto_seguridad', $request->id_punto_seguridad)
+                ->select('id_revision')
+                ->first();
 
-    // Roots: services attached to the inspection itself, not to a diagnostic.
-    return $serviciosPorDiagnostico->get(null, collect())
-        ->map(fn ($s) => $this->nodoServicio($s, $serviciosPorDiagnostico, $diagnosticosPorServicio))
-        ->values()
-        ->all();
-}
+            if (!$revision) {
+                throw new \\Exception(self::MSG_REVISION_NO_ENCONTRADA);
+            }
 
-private function nodoServicio($servicio, $porDiagnostico, $porServicio): array
-{
-    // Every diagnostic raised on this service → recurse into its subtree.
-    $hijos = $porServicio->get($servicio->id_servicio_revision, collect())
-        ->map(fn ($d) => $this->nodoDiagnostico($d, $porDiagnostico, $porServicio));
+            DB::table('tw_revisiones')
+                ->where('id_revision', $revision->id_revision)
+                ->update([
+                    'id_estatus_revision'    => 3,
+                    'id_comentario_generico' => 3,
+                ]);
 
-    return [
-        'id'           => $servicio->id_servicio_sugerido,
-        'tipo'         => 'servicio',
-        'estatus'      => $servicio->id_estatus_servicio_sugerido,
-        'diagnosticos' => $hijos->values()->all(),
-    ];
-}
+            // The new node of the service ↔ diagnostic tree, priced on the spot.
+            $nuevoSugerido = new DiagnosticoSugerido();
+            $nuevoSugerido->id_revision                  = $revision->id_revision;
+            $nuevoSugerido->id_orden_servicio            = $id_orden_servicio;
+            $nuevoSugerido->id_estatus_servicio_sugerido = 2;
+            $nuevoSugerido->id_servicio_revision         = $request->id_servicio_revision;
+            $nuevoSugerido->b_requiere_refaccion         = count($request->refacciones) > 0 ? 1 : 0;
+            $nuevoSugerido->b_cotizado_refaccionaria     = 0;
+            $nuevoSugerido->n_duracion_horas             = $request->n_duracion_horas;
 
-private function nodoDiagnostico($diagnostico, $porDiagnostico, $porServicio): array
-{
-    // Every service this diagnostic generated → recurse back into services.
-    $hijos = $porDiagnostico->get($diagnostico->id_diagnostico_sugerido, collect())
-        ->map(fn ($s) => $this->nodoServicio($s, $porDiagnostico, $porServicio));
+            [$modoCosto, $precioCotizado] = $this->modoCostoPrecio(
+                $request->id_servicio_revision,
+                $request->n_duracion_horas,
+            );
+            $nuevoSugerido->n_ultimo_precio_cotizado = $precioCotizado;
+            $nuevoSugerido->id_modo_costo_servicio   = $modoCosto;
+            $nuevoSugerido->save();
 
-    return [
-        'id'        => $diagnostico->id_diagnostico_sugerido,
-        'tipo'      => 'diagnostico',
-        'estatus'   => $diagnostico->id_estatus_servicio_sugerido,
-        'servicios' => $hijos->values()->all(),
-    ];
+            return [
+                'id_servicio_sugerido'    => $nuevoSugerido->id_diagnostico_sugerido,
+                'id_revision_actualizada' => $revision->id_revision,
+            ];
+        });
+
+        // Every Support action is audited with the acting user.
+        auditar($request->id_usuario, 'soporte', 'agregar_servicio_diagnostico', null,
+            json_encode([
+                'id_orden_servicio'    => $id_orden_servicio,
+                'id_servicio_revision' => $request->id_servicio_revision,
+                'resultado'            => $resultado,
+            ]), false);
+
+        return response()->json([
+            'status'  => 'success',
+            'code'    => 201,
+            'message' => 'Diagnostico sugerido agregado correctamente post-revisión.',
+            'data'    => $resultado,
+        ], 201);
+
+    } catch (\\Exception $e) {
+        $codigo = $e->getMessage() === self::MSG_REVISION_NO_ENCONTRADA ? 404 : 500;
+
+        return response()->json([
+            'status'  => 'error',
+            'code'    => $codigo,
+            'message' => 'No se pudo agregar el diagnostico sugerido.',
+            'error'   => $e->getMessage(),
+        ], $codigo);
+    }
 }`,
           },
           {
             filename: 'calendario.component.ts',
             language: 'typescript',
-            caption:  'Performance — the calendar paginates by visible range and memoizes each range in memory (zero HTTP on revisits); a single batched addEventSource replaces N addEvent calls. This removed the triple-fetch and the O(n) re-render that froze the browser (~60% less DB load).',
+            caption:  'Performance — the calendar paginates by visible range and memoizes each range in memory (zero HTTP on revisits); a single batched addEventSource replaces N addEvent calls. This removed the triple-fetch and the O(n) re-render that froze the browser.',
             code: `private readonly cache = new Map<string, EventInput[]>();
 private currentRangeKey = '';
 
@@ -782,24 +820,560 @@ private render(events: EventInput[]): void {
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // PROJECT 03 — VagXpress (placeholder — case study pending real material)
+  // PROJECT 03 — VagXpress (auto-parts ERP — composable blocks)
   // ═══════════════════════════════════════════════════════════════════════════
   {
     slug:    'vagxpress',
     index:   '03',
     title:   'VagXpress',
-    tagline: 'Last-mile logistics & delivery orchestration — case study coming soon.',
+    tagline: 'Auto-parts retail ERP — POS, a transitive parts-equivalence engine, event-driven auto-replenishment, and a universal-by-default vehicle-fitment rules engine.',
 
-    role:     'Backend Engineer',
-    year:     '2024',
-    industry: 'Logistics · B2B',
+    role:     'Full-Stack Engineer',
+    year:     '2025–26',
+    industry: 'Auto Parts · Retail ERP',
 
-    stack: ['Node.js', 'Express', 'MongoDB', 'Redis', 'Docker'],
+    // Color de marca de VagXpress (rojo sobre negro) — tiñe el glow atmosférico del hero
+    accent:   '#E31E24',
+
+    // Carrusel hero (landscape 3/2). TODO: reemplazar image404.avif por capturas reales.
+    heroImages: [
+      '/images/projects/image404.avif', // IMAGEN 1 (hero): el Punto de Venta en operación — carrito, búsqueda con autofocus, niveles de utilidad P1–P4
+      '/images/projects/image404.avif', // IMAGEN 2 (hero): catálogo de refacciones mostrando un grupo de equivalencias / el Constructor de Reglas de compatibilidad
+      '/images/projects/image404.avif', // IMAGEN 3 (hero): módulo de Compras — requisición automática con la alerta de "mejor precio" por proveedor
+    ],
+
+    stack: [
+      'Laravel 10', 'PHP 8.1', 'MySQL', 'Sanctum',
+      'Angular 19', 'Angular Material', 'RxJS',
+      'ngx-datatable', 'ApexCharts', 'zxing',
+    ],
 
     blocks: [
+      // ── 01 · Executive Summary ──────────────────────────────────────────────
       {
         type: 'summary',
-        body: 'Case study in progress. Technical documentation is being prepared.',
+        body:
+          'VagXpress is the ERP that runs an auto-parts retailer end to end — point of sale, a complex inventory of interchangeable parts, customer credit, and supplier procurement — built on a single Laravel 10 / MySQL API and an Angular 19 panel. It is a team platform, and I architected and built its commercial and supply-chain core in the project’s first months, before the team expanded to the last-mile logistics modules: I own the inventory, parts-equivalence, POS, pricing, credit and procurement domains end to end. Three problems that look like CRUD but are not anchor the work — a transitive parts-equivalence engine, event-driven automatic replenishment, and a universal-by-default vehicle-fitment rules engine.',
+      },
+
+      // ── 02 · System Overview (multi-repo) ───────────────────────────────────
+      {
+        type: 'systemMap',
+        title: 'System Overview',
+        body:
+          'A single Laravel API (token auth via Sanctum) is the source of truth for two clients: a web panel for the counter and back office, and a driver app for last-mile delivery. I architected and own the API’s commercial and inventory core and the Angular modules that consume it; the mobile delivery app and its Movil/* endpoints were built by the team on top of that API.',
+        repos: [
+          { name: 'VagXpress API',    role: 'Central REST API · inventory, POS, procurement · source of truth', stack: ['Laravel 10', 'PHP 8.1', 'MySQL', 'Sanctum'],          accent: 'green' },
+          { name: 'VagXpress Web',    role: 'Counter & back-office panel — POS, catalog, purchasing, credit',   stack: ['Angular 19', 'Material', 'ngx-datatable', 'zxing'],   accent: 'plain' },
+          { name: 'VagXpress Mobile', role: 'Driver app — route assignments, shipments & proof-of-delivery',    stack: ['Ionic 8', 'Capacitor 7', 'Geolocation', 'Camera'],   accent: 'plain' },
+        ],
+      },
+
+      // ── 03 · The Challenge ──────────────────────────────────────────────────
+      {
+        type: 'challenge',
+        body:
+          'The shop ran on SICAR, a generic POS that could not express the realities of auto parts. Every manufacturer and every distributor uses a different part number for the same physical piece, so to mark seven interchangeable parts as equivalent a clerk had to type the other six part numbers into each part’s description — 42 brittle, one-directional annotations. There was no way to model which vehicles a part fits, so staff looked up fitment on the internet, found a part number, and only then searched SICAR for stock and price. Inventory never reacted to sales on its own, and purchase requisitions were written by hand. The real challenge was to model interchangeability and vehicle fitment without a combinatorial explosion of data — and to make stock replenish itself.',
+      },
+
+      // ── 04 · Evolution (timeline) ───────────────────────────────────────────
+      {
+        type: 'timeline',
+        title: 'Evolution',
+        phases: [
+          {
+            label: 'Foundations, solo',
+            date:  'Sep 2025',
+            tag:   'Core',
+            body:  'First commits of the project: the full inventory-and-permissions schema, the parts CRUD, and the transitive equivalence engine — the data-model decisions everything else stands on.',
+          },
+          {
+            label: 'The commercial core',
+            date:  'Sep–Dec 2025',
+            tag:   'Solo',
+            body:  'Vehicle-fitment rules engine, tiered utility margins (P1–P4) and the first version of the scan-optimized POS — still a one-person codebase: the team reviewed via PRs while I built the operation’s spine.',
+          },
+          {
+            label: 'Team scale-out',
+            date:  'Dec 2025 →',
+            tag:   'Team',
+            body:  'With the commercial core stable, the team joined and built last-mile logistics (shipments, routes, driver app) on top of the API — new domains, no changes required to the core.',
+          },
+          {
+            label: 'The layered rewrite',
+            date:  'Jul 2026',
+            tag:   'Ongoing',
+            body:  'On the snapshot I was authorized to keep: the backend rewritten into layers (controllers → services · form requests · tests) and the schema consolidated — including a faithful rebuild of the fitment engine whose original branch was lost.',
+          },
+        ],
+      },
+
+      // ── 05 · Before / After ─────────────────────────────────────────────────
+      {
+        type: 'beforeAfter',
+        title: 'Before / After',
+        intro: 'Four workflows the old system (SICAR) could not express.',
+        rows: [
+          {
+            label:  'Parts equivalence',
+            before: 'To link 7 interchangeable parts, each part’s description listed the other 6 part numbers — 42 manual, one-directional notes.',
+            after:  'Each part joins one equivalence group; membership makes all members mutually equivalent by transitivity. Register once.',
+          },
+          {
+            label:  'Vehicle fitment',
+            before: 'No fitment model — staff googled the part, found a number, then searched for stock and price by hand.',
+            after:  'Universal-by-default rules: tag a part with marca / modelo / generación / motor; a rule with no conditions is universal.',
+          },
+          {
+            label:  'Replenishment',
+            before: 'Stock never reacted to sales; purchase requisitions were written by hand.',
+            after:  'A sale emits an event; a listener rebuilds an idempotent requisition, suggesting max − current stock.',
+          },
+          {
+            label:  'Supplier choice',
+            before: 'One fixed supplier per part, with no visibility of cheaper options.',
+            after:  'Every supplier’s last cost is compared; the system flags the savings and splits one purchase order per supplier.',
+          },
+        ],
+      },
+
+      // ── 06 · Architecture ───────────────────────────────────────────────────
+      {
+        type: 'architecture',
+        body:
+          'The API is a Laravel 10 monolith over MySQL with token auth via Sanctum, serving REST to the Angular panel and a team-built mobile app. The supply chain is event-driven: a POS sale deducts stock and dispatches VerificarStockBajo, and a listener rebuilds an idempotent purchase requisition. Interchangeability is modeled as graph components — parts join an equivalence group instead of linking pairwise — and vehicle fitment as a rules engine that is universal by default until constrained by marca / modelo / generación / motor.',
+        diagrams: [
+          {
+            nodes: [
+              { id: 'web',      label: 'Web Panel',        sublabel: 'Angular',            type: 'client',  col: 0, row: 0 },
+              { id: 'mobile',   label: 'Logistics App',    sublabel: 'team · mobile',      type: 'client',  col: 0, row: 1 },
+              { id: 'api',      label: 'Laravel API',      sublabel: 'REST · Sanctum',     type: 'gateway', col: 1, row: 0 },
+              { id: 'sale',     label: 'POS Sale',         sublabel: 'deducts stock',      type: 'service', col: 1, row: 1 },
+              { id: 'po',       label: 'Purchase Orders',  sublabel: 'best price / supplier', type: 'service', col: 2, row: 0 },
+              { id: 'listener', label: 'Auto-Requisition', sublabel: 'idempotent listener', type: 'service', col: 2, row: 1 },
+              { id: 'db',       label: 'MySQL',            sublabel: 'inventory · equivalences', type: 'db',  col: 3, row: 1 },
+            ],
+            edges: [
+              { from: 'web',      to: 'api',      label: 'REST'       },
+              { from: 'mobile',   to: 'api',      label: 'REST'       },
+              { from: 'api',      to: 'sale',     label: 'checkout'   },
+              { from: 'sale',     to: 'listener', label: 'event'      },
+              { from: 'listener', to: 'po',       label: 'feeds', dashed: true },
+              { from: 'listener', to: 'db',       label: 'requisition' },
+              { from: 'po',       to: 'db',       label: 'orders'     },
+            ],
+            scopes: [
+              { label: 'Event-driven replenishment', nodeIds: ['sale', 'listener', 'po'] },
+            ],
+          },
+        ],
+      },
+
+      // ── 07 · Key Features ───────────────────────────────────────────────────
+      {
+        type: 'features',
+        items: [
+          {
+            tag:         'Inventory · Graph',
+            title:       'Transitive Parts Equivalence',
+            // IMAGEN: el catálogo o el detalle de una refacción mostrando su grupo de equivalencias (las piezas intercambiables) y la clase (original / genérica / funcional, con color)
+            image:       '/images/projects/image404.avif',
+            description: 'Auto parts are interchangeable in families: seven part numbers from seven brands can be the same physical piece. Instead of linking them pairwise, I model each family as a group — a part joins the group and is instantly equivalent to every other member (transitivity). Creating a part detects whether the chosen equivalents already form a group, refuses to merge conflicting groups, and cleans up orphaned ones. Each part also carries every identifier it needs (internal code, SKU, QR, ACES) and every supplier keeps their own part number, so the catalog speaks all the dialects of a single piece.',
+          },
+          {
+            tag:         'Supply Chain · Events',
+            title:       'Event-Driven Auto-Replenishment',
+            // IMAGEN: el módulo de Compras — una requisición automática generada por una venta, con la alerta de "mejor precio" y el ahorro por unidad, lista para dividirse en órdenes de compra por proveedor
+            image:       '/images/projects/image404.avif',
+            description: 'Inventory replenishes itself. Every POS sale deducts stock and dispatches a VerificarStockBajo event; a listener filters the parts that fell to their minimum and rebuilds an open, automated requisition idempotently — suggesting exactly max − current stock, never creating duplicates. When the buyer turns that requisition into purchase orders, the system compares every supplier’s last cost, flags the cheaper option with its per-unit savings, and splits the result into one purchase order per supplier (with PDF).',
+          },
+          {
+            tag:         'Catalog · Rules Engine',
+            title:       'Universal-by-Default Vehicle Fitment',
+            // IMAGEN: el "Constructor de Reglas" — multi-select en cascada de marca/modelo/generación/motor con el resumen en vivo ("Compatible con: Ford Lobo o Chevrolet Silverado…"); o la búsqueda por vehículo en el POS
+            image:       '/images/projects/image404.avif',
+            description: 'Knowing which cars a part fits would explode into a giant tag matrix if modeled naïvely. Instead, a part is universal until you add rules. A rule is a single card that combines multi-selected brands, models, generations (year ranges) and engines — and a rule with no conditions is, by definition, universal and stores zero rows. The matching engine answers "what fits this car?" with one correlated query per supplied dimension; a "Rule Builder" authors the rules and the POS searches parts straight from a vehicle.',
+          },
+          {
+            tag:         'POS · Counter',
+            title:       'Scan-Optimized Point of Sale',
+            // IMAGEN: el Punto de Venta en operación — barra de búsqueda con autofocus, carrito, selección de niveles de utilidad P1–P4 y el diálogo de procesar venta con métodos de pago
+            image:       '/images/projects/image404.avif',
+            description: 'The counter is built for speed. The search bar keeps autofocus and the component distinguishes a barcode scanner from manual typing by the time between keystrokes (a 100 ms threshold), so a scan adds straight to the cart. When the requested part is out of stock, the counter surfaces its equivalence family — original, generic and functional alternatives — so the sale is saved instead of lost. The cart applies tiered utility margins (P1–P4) over a base price, respects a minimum authorized price as a negotiation floor, and the checkout handles multiple payment methods, bank accounts, and customer credit with running balances and payments.',
+          },
+        ],
+      },
+
+      // ── 08 · Impact ─────────────────────────────────────────────────────────
+      {
+        type: 'metrics',
+        title: 'Impact',
+        items: [
+          { value: 'O(1)', label: 'Add part to a family', sub: 'One group join propagates interchangeability to all members (transitivity)' },
+          { value: '0',    label: 'Manual reorders',      sub: 'A POS sale triggers an idempotent auto-requisition (suggest = max − stock)' },
+          { value: '∞',    label: 'Fitment per rule',     sub: 'A rule with zero conditions matches any vehicle — no fitment matrix to store' },
+          { value: '1:N',  label: 'Requisition → orders', sub: 'Best price flagged per part; one purchase order generated per supplier' },
+        ],
+      },
+
+      // ── 09 · Implementation ─────────────────────────────────────────────────
+      {
+        type: 'code',
+        title: 'Implementation',
+        tabs: [
+          {
+            filename: 'RefaccionService.php',
+            language: 'php',
+            caption:  'Interchangeability as graph components — a new part joins the group its equivalents already share (or seeds a new one), so the whole family becomes mutually equivalent through a single membership instead of 42 pairwise notes.',
+            code: `// Link a new part into an equivalence family. Parts don't link pairwise;
+// they join a group, so membership = mutual interchangeability (transitivity).
+$grupos = DB::table('tr_refacciones_equivalencias')
+    ->whereIn('id_refaccion', $equivalentes)
+    ->where('b_activo', 1)
+    ->distinct()
+    ->pluck('id_equivalencia');
+
+if ($grupos->count() > 1) {
+    throw new \\Exception('Las refacciones equivalentes pertenecen a grupos distintos.');
+}
+
+if ($grupos->count() === 1) {
+    // Join the existing family — one row, now equivalent to every member.
+    DB::table('tr_refacciones_equivalencias')->insert([
+        'id_refaccion' => $idRefaccion, 'id_equivalencia' => $grupos->first(), 'b_activo' => 1,
+    ]);
+} else {
+    // No family yet: seed the group and attach every member at once.
+    $idGrupo = DB::table('tw_equivalencias')->insertGetId([
+        's_nombre_equivalencia' => 'Equivalencia ' . now()->format('YmdHis'), 'b_activo' => 1,
+    ]);
+    foreach (array_merge($equivalentes, [$idRefaccion]) as $id) {
+        DB::table('tr_refacciones_equivalencias')->insert([
+            'id_refaccion' => $id, 'id_equivalencia' => $idGrupo, 'b_activo' => 1,
+        ]);
+    }
+}`,
+          },
+          {
+            filename: 'GenerarRequisicionAutomatica.php',
+            language: 'php',
+            caption:  'Inventory replenishes itself: a sale emits VerificarStockBajo; this listener rebuilds an open requisition idempotently (firstOrCreate / updateOrCreate), suggesting max − current stock — no duplicate requisitions, no manual reorder.',
+            code: `// Fired by the VerificarStockBajo event that every POS sale emits.
+public function handle(VerificarStockBajo $event): void
+{
+    $bajas = Refaccion::whereIn('id_refaccion', $event->idsRefacciones)->get()
+        ->filter(fn ($r) => $r->n_stock_actual <= ($r->n_stock_minimo ?? 0));
+
+    if ($bajas->isEmpty()) return;
+
+    // Idempotent: reuse the open automated requisition or create it once.
+    $requisicion = Requisicion::firstOrCreate(
+        ['id_estatus_requisicion' => 1, 'id_tipo_requisicion' => 1, 'b_activo' => 1],
+        ['id_usuario_crea' => $event->idUsuario, 'd_fecha_solicitud' => now()],
+    );
+
+    foreach ($bajas as $r) {
+        $sugerida = max(1, ($r->n_stock_maximo ?? 0) - $r->n_stock_actual); // refill to max
+        RequisicionRefaccion::updateOrCreate(
+            ['id_requisicion' => $requisicion->id_requisicion,
+             'id_refaccion'   => $r->id_refaccion,
+             'id_estatus_requisicion' => 1],
+            ['n_cantidad_sugerida' => $sugerida,
+             'n_costo_unitario'    => $r->n_precio_compra ?? 0, 'b_activo' => 1],
+        );
+    }
+}`,
+          },
+          {
+            filename: 'CompatibilidadService.php',
+            language: 'php',
+            caption:  'The fitment engine: one correlated (NOT EXISTS) OR (EXISTS) per supplied dimension. An unconstrained dimension passes; a rule with no conditions at all is universal and always matches — so universality costs zero stored rows.',
+            code: `// Find every part that fits a given vehicle. A rule matches if, per dimension,
+// it has no rows (unconstrained) OR the vehicle's value is among them.
+$reglas = DB::table('tw_reglas_compatibilidad AS r')->where('r.b_activo', 1);
+
+foreach ($dimensiones as $d) {          // marca, modelo, generación, motor
+    if (empty($d['valor'])) continue;   // dimension not provided = wildcard
+
+    $reglas->where(function ($w) use ($d) {
+        $w->whereNotExists(fn ($s) => $s->from($d['pivote'])
+                ->whereColumn($d['pivote'] . '.id_regla', 'r.id_regla')
+                ->where('b_activo', 1))
+          ->orWhereExists(fn ($s) => $s->from($d['pivote'])
+                ->whereColumn($d['pivote'] . '.id_regla', 'r.id_regla')
+                ->where('b_activo', 1)
+                ->where($d['columna'], $d['valor']));
+    });
+}
+
+// Rules with zero conditions survive every filter → universal parts.
+$idsCompatibles = $reglas->distinct()->pluck('r.id_refaccion');`,
+          },
+        ],
+      },
+    ],
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROJECT 04 — iGEM BUAP (competition wiki — composable blocks)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    slug:    'igem-buap',
+    index:   '04',
+    title:   'iGEM BUAP',
+    tagline: 'Interactive wiki for a gold-medal iGEM 2025 team — a scroll-driven animated story, an interactive audiobook, and Tochtli, a RAG chatbot on Claude that answers from the site itself.',
+
+    role:     'Front-End & AI Engineer',
+    year:     '2025–26',
+    industry: 'Synthetic Biology · Web',
+
+    // Color de marca del equipo (índigo, versión luminosa del brand #292b60) — glow del hero
+    accent:   '#4F5BD5',
+
+    // Carrusel hero (landscape 3/2). TODO: reemplazar image404.avif por capturas reales.
+    heroImages: [
+      '/images/projects/image404.avif', // IMAGEN 1 (hero): el storytelling animado del home — Tochtli, burbujas de diálogo con typewriter y escenas con parallax al hacer scroll
+      '/images/projects/image404.avif', // IMAGEN 2 (hero): el storybook/audiolibro interactivo (react-pageflip) con una página abierta y los controles de play/mute
+      '/images/projects/image404.avif', // IMAGEN 3 (hero): el chatbot Tochtli abierto — el widget flotante respondiendo una pregunta en streaming con las etiquetas de secciones
+    ],
+
+    stack: [
+      'React 18', 'TypeScript', 'Vite', 'Tailwind 4',
+      'Radix UI', 'Framer Motion', 'react-pageflip',
+      'RAG', 'Claude Haiku 4.5', 'Prompt Caching', 'Anthropic SDK', 'Cloudflare Workers',
+    ],
+
+    blocks: [
+      // ── 01 · Executive Summary ──────────────────────────────────────────────
+      {
+        type: 'summary',
+        body:
+          'A multidisciplinary team of BUAP students — biologists, chemists, medics — brought me in as the software engineer for their iGEM 2025 competition wiki: a project that grows a synthetic pulmonary surfactant in Pichia pastoris yeast to help premature babies breathe. I built the site’s interactive spine — a scroll-driven animated story and a voice-narrated, self-reading storybook — and the team went on to win a gold medal at the Grand Jamboree in Paris. The wiki outlived the competition as the project’s living page, and in 2026 I extended it with Tochtli: a retrieval-augmented chatbot on Claude that answers visitors’ questions using only the site’s own content, served from a Cloudflare Worker so a static site can safely run AI.',
+      },
+
+      // ── 02 · The Challenge ──────────────────────────────────────────────────
+      {
+        type: 'challenge',
+        body:
+          'An iGEM wiki has to explain hard synthetic biology — a pulmonary surfactant grown in Pichia pastoris to help premature babies breathe — to judges, scientists and curious visitors alike, and it must ship as a fully static site: iGEM publishes every wiki on GitLab Pages, with no backend and a hard freeze deadline. My job was to make the science land emotionally without diluting it, for an audience that ranged from Jamboree judges to a curious parent. That meant narrative devices a scientific paper does not have — a story you scroll, a book that reads itself aloud — built to survive an autoplay-blocking browser, a reader who needs reduced motion, and a phone on conference Wi-Fi. Later, adding a chatbot to that same static site meant running AI with no server to hold the secret: an API key can never reach a public build.',
+      },
+
+      // ── 03 · Evolution (timeline) ───────────────────────────────────────────
+      {
+        type: 'timeline',
+        title: 'Evolution',
+        phases: [
+          {
+            label: 'Hero & first motion',
+            date:  'Sep 2025',
+            tag:   'Competition',
+            body:  'Joined a wiki already being written by scientists. Started where a visitor lands: a video hero with a wave divider, then swapped the local banner for an embed when the payload hurt load times on conference Wi-Fi.',
+          },
+          {
+            label: 'A story you scroll',
+            date:  'Sep 2025',
+            tag:   'Competition',
+            body:  'The homepage became a sequence of scroll-triggered scenes — Tochtli and friends animating in with typed-out dialogue, layered parallax, and recorded narration per scene, gated behind a one-time sound unlock and a global mute so no reader is ambushed by audio.',
+          },
+          {
+            label: 'The storybook, narrated',
+            date:  'Sep 2025',
+            tag:   'Wiki freeze',
+            body:  'A page-turning book that reads itself: narrator and character voices chained per page, pages auto-advancing when the audio ends, reduced-motion honored. Shipped with image optimization before the iGEM freeze — the version defended in Paris.',
+          },
+          {
+            label: 'Gold in Paris',
+            date:  'Oct 2025',
+            tag:   'Result',
+            body:  'The team won a gold medal at the iGEM Grand Jamboree with this wiki — judged on science, but experienced through the site.',
+          },
+          {
+            label: 'Tochtli, the RAG chatbot',
+            date:  'Jul 2026',
+            tag:   'Beyond',
+            body:  'The wiki outlived the competition as the project’s public page, so I kept building: a chatbot on Claude Haiku 4.5 that answers only from the site’s content, running on a Cloudflare Worker — and a restoration of the voice narration that later edits had broken.',
+          },
+        ],
+      },
+
+      // ── 04 · Key Features ───────────────────────────────────────────────────
+      {
+        type: 'features',
+        items: [
+          {
+            tag:         'Storytelling · Scroll',
+            title:       'A Story You Scroll Through',
+            // IMAGEN: una escena del home — Tochtli (avatar) con su burbuja de diálogo escribiéndose (typewriter) y el efecto parallax; idealmente a media transición entre dos escenas
+            image:       '/images/projects/image404.avif',
+            description: 'The homepage tells the project’s story as a sequence of scroll-triggered scenes: Tochtli and friends animate in and out with Framer Motion, their lines type themselves out, and layered parallax gives depth as you move. Each scene can carry a recorded narration that plays in sync — gated behind a one-time sound unlock and a global mute toggle so it respects the browser’s autoplay policy and never surprises a reader.',
+          },
+          {
+            tag:         'Narrative · Audiobook',
+            title:       'An Interactive Storybook',
+            // IMAGEN: el storybook (react-pageflip) con una página abierta a medio giro, mostrando ilustración + texto y los controles de reproducción (play/pause, mute)
+            image:       '/images/projects/image404.avif',
+            description: 'A page-turning book (react-pageflip) that reads itself: a narrator and character voices are synced to each page, pages auto-advance when the audio ends, and illustrations breathe with a subtle Ken Burns motion. It honors prefers-reduced-motion (turning off the slow page-flip and pan), resizes cleanly across mobile, tablet and desktop, and puts play/pause and mute in the reader’s hands.',
+          },
+          {
+            tag:         'AI · RAG',
+            title:       'Tochtli — a RAG Chatbot on Claude',
+            // IMAGEN: el widget flotante de Tochtli abierto respondiendo en streaming, con las etiquetas de "secciones relacionadas" debajo de la respuesta
+            image:       '/images/projects/image404.avif',
+            description: 'A floating assistant, in the voice of the team’s mascot, that answers only from the site’s own content. Because the wiki is static, the Anthropic API key lives in a Cloudflare Worker; the whole knowledge base is sent to Claude Haiku 4.5 inside a cached system block, so Spanish questions are answered from an English site with no per-language index, and each reply streams back token by token. It falls back to BM25 retrieval if the corpus outgrows the window, and the Worker adds a CORS allowlist and per-IP rate limiting.',
+          },
+        ],
+      },
+
+      // ── 05 · Architecture ───────────────────────────────────────────────────
+      {
+        type: 'architecture',
+        body:
+          'The wiki is a React + Vite single-page app deployed statically to GitLab Pages by iGEM — so there is no server to hold a secret. The Tochtli chatbot solves that with a Cloudflare Worker that owns the API key: the widget POSTs a question, the Worker builds the context and calls Claude, and forwards the SSE stream back as plain text. The retrieval logic lives in one module (tochtli/core.mjs) shared byte-for-byte between the production Worker and a local Vite dev plugin, so both build the request identically.',
+        diagrams: [
+          {
+            nodes: [
+              { id: 'wiki',   label: 'Static Wiki',     sublabel: 'React · GitLab Pages', type: 'client',   col: 0, row: 0 },
+              { id: 'widget', label: 'Tochtli Widget',  sublabel: 'chat UI',              type: 'client',   col: 0, row: 1 },
+              { id: 'kb',     label: 'Knowledge Base',  sublabel: 'site content · JSON',  type: 'db',       col: 2, row: 0 },
+              { id: 'worker', label: 'Tochtli Worker',  sublabel: 'Cloudflare · API key', type: 'gateway',  col: 1, row: 1 },
+              { id: 'core',   label: 'RAG Core',        sublabel: 'context · caching',    type: 'service',  col: 2, row: 1 },
+              { id: 'claude', label: 'Claude Haiku 4.5', sublabel: 'Anthropic · external', type: 'external', col: 3, row: 1 },
+            ],
+            edges: [
+              { from: 'wiki',   to: 'widget', label: 'mounts',     dashed: true },
+              { from: 'widget', to: 'worker', label: 'POST /chat' },
+              { from: 'worker', to: 'core',   label: 'build ctx'  },
+              { from: 'core',   to: 'kb',     label: 'whole base', dashed: true },
+              { from: 'core',   to: 'claude', label: 'SSE stream', bidir: true },
+            ],
+            scopes: [
+              { label: 'RAG backend (Cloudflare)', nodeIds: ['worker', 'core'] },
+            ],
+          },
+        ],
+      },
+
+      // ── 06 · Impact ─────────────────────────────────────────────────────────
+      {
+        type: 'metrics',
+        title: 'Impact',
+        items: [
+          { value: 'Gold',  label: 'iGEM 2025 · Paris',   sub: 'The team earned a gold medal at the Grand Jamboree' },
+          { value: 'ES/EN', label: 'Cross-lingual RAG',   sub: 'Spanish questions answered from an English site — no per-language index' },
+          { value: '0',     label: 'Servers to run',      sub: 'A static wiki plus one Cloudflare Worker; the API key never reaches the browser' },
+          { value: '1',     label: 'RAG core, 2 runtimes', sub: 'Local dev plugin and production Worker share one module (tochtli/core.mjs)' },
+        ],
+      },
+
+      // ── 07 · Implementation ─────────────────────────────────────────────────
+      {
+        type: 'code',
+        title: 'Implementation',
+        tabs: [
+          {
+            filename: 'core.mjs',
+            language: 'javascript',
+            caption:  'Cross-lingual RAG without a vector DB: the site is small enough to send whole, so instead of lexical retrieval (which fails ES↔EN) the entire knowledge base rides in a cached system block — Claude Haiku 4.5 understands both languages and prompt caching makes every follow-up cheap.',
+            code: `// One request body, shared by the local Vite plugin and the Cloudflare Worker.
+export function buildRequestBody({ model, contextText, messages }) {
+  return {
+    model,                       // claude-haiku-4-5
+    max_tokens: MAX_TOKENS,
+    // Stable blocks → prompt caching: the big context is cached, so each
+    // follow-up question is billed at a fraction of the first.
+    system: [
+      { type: 'text', text: SYSTEM_PROMPT },
+      { type: 'text', text: contextText, cache_control: { type: 'ephemeral' } },
+    ],
+    messages,
+  };
+}`,
+          },
+          {
+            filename: 'worker/index.mjs',
+            language: 'javascript',
+            caption:  'A static iGEM wiki has no backend, so the API key lives in a Cloudflare Worker (with a CORS allowlist and per-IP rate limiting). It proxies Claude’s SSE stream, forwarding only the text deltas as a plain-text stream the widget renders token by token.',
+            code: `// Turn Anthropic's SSE stream into a plain-text stream of just the deltas.
+function sseToText(upstreamBody) {
+  const reader = upstreamBody.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = '';
+
+  return new ReadableStream({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) return controller.close();
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;
+        const data = t.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try {
+          const evt = JSON.parse(data);
+          if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') {
+            controller.enqueue(encoder.encode(evt.delta.text));
+          }
+        } catch { /* partial SSE chunk: ignore */ }
+      }
+    },
+    cancel() { reader.cancel(); },
+  });
+}`,
+          },
+          {
+            filename: 'TochtliDialogue.tsx',
+            language: 'typescript',
+            caption:  'Narration that respects the browser’s autoplay policy: a scene’s voice only plays once the reader has unlocked sound (a one-time gesture) and the global toggle is on, and it is torn down when the scene changes.',
+            code: `// Play this scene's narration only when sound is unlocked and enabled;
+// tear it down when the scene (or those conditions) change.
+useEffect(() => {
+  if (!audioSrc || !audioUnlocked || !isSoundEnabled) return;
+
+  const audio = new Audio(audioSrc);
+  audio.play();
+
+  return () => audio.pause();
+}, [audioSrc, audioUnlocked, isSoundEnabled]);`,
+          },
+          {
+            filename: 'book-style/page.tsx',
+            language: 'typescript',
+            caption:  'The audiobook’s pacing: narrator and character voices are chained by their onended callbacks, so a page turns only when its narration truly finishes — never on a fixed timer. The effect also distinguishes “the reader hit pause” from “the page changed”, so pausing never restarts the narration.',
+            code: `// Each panel: narrator voice → character voice → turn the page.
+// Chained on 'ended', so pacing follows the audio, not a guessed timeout.
+const activePanel = storyData[pageIndex];
+const onComplete  = () => queueAdvance(900);
+
+const playDialogue = () => {
+  if (!activePanel.audio_dialogo) return onComplete();
+
+  const dialogueAudio = new Audio(activePanel.audio_dialogo);
+  dialogueAudio.muted = isMutedRef.current;
+  activeAudio.current.dialogue = dialogueAudio;
+  dialogueAudio.onended = onComplete;
+  // If the browser blocks playback, still advance — never strand the reader.
+  dialogueAudio.play().catch(() => onComplete());
+};
+
+const playNarration = () => {
+  if (!activePanel.audio_narrador) return playDialogue();
+
+  const narratorAudio = new Audio(activePanel.audio_narrador);
+  narratorAudio.muted = isMutedRef.current;
+  activeAudio.current.narrator = narratorAudio;
+  narratorAudio.onended = playDialogue;
+  narratorAudio.play().catch(() => playDialogue());
+};
+
+playNarration();`,
+          },
+        ],
       },
     ],
   },

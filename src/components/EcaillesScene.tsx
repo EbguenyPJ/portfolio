@@ -51,11 +51,19 @@ export default function EcaillesScene({
     camera.lookAt(0, 0, 0)
 
     // ─── Lights ───────────────────────────────────────────────
-    const light1 = new THREE.PointLight(0x2C323A, 3)
+    // The original scene ran on Three.js r137 (legacy lighting): point lights
+    // with distance=0 had NO falloff. Since r155, decay=2 (inverse-square)
+    // always applies, so at ~200-300 units these lights vanish and the scales
+    // look dim/tinted. decay=0 + ×π intensity reproduces the legacy look.
+    // Hex colors must be read as raw/linear values (r137 had no color
+    // management; r150+ would sRGB→linear them, dimming these dark tones ~7×).
+    const light1Color = new THREE.Color().setHex(0x2C323A, THREE.LinearSRGBColorSpace)
+    const light1 = new THREE.PointLight(light1Color, 3 * Math.PI, 0, 0)
     light1.position.set(0, 0, 200)
     scene.add(light1)
 
-    const light2 = new THREE.PointLight(0x56657C, 0.17)
+    const light2Color = new THREE.Color().setHex(0x56657C, THREE.LinearSRGBColorSpace)
+    const light2 = new THREE.PointLight(light2Color, 0.17 * Math.PI, 0, 0)
     light2.position.set(0, 0, 300)
     scene.add(light2)
 
@@ -249,8 +257,13 @@ export default function EcaillesScene({
       instGeo.attributes.position = baseGeo.attributes.position.clone()
       instGeo.attributes.normal   = baseGeo.attributes.normal.clone()
       if (baseGeo.attributes.uv)  instGeo.attributes.uv  = baseGeo.attributes.uv.clone()
-      if (baseGeo.attributes.uv2) instGeo.attributes.uv2 = baseGeo.attributes.uv2.clone()
-      else if (baseGeo.attributes.uv) instGeo.attributes.uv2 = baseGeo.attributes.uv.clone()
+      // aoMap reads attribute `uv1` since r152 (was `uv2` in the original r137
+      // build) — without it the AO texture is sampled at a fixed corner.
+      const uv2Source = baseGeo.attributes.uv2 ?? baseGeo.attributes.uv
+      if (uv2Source) {
+        instGeo.attributes.uv1 = uv2Source.clone()
+        instGeo.attributes.uv2 = uv2Source.clone()
+      }
       instGeo.setIndex(baseGeo.index!.clone())
       instGeo.instanceCount = TOTAL
       geometries = [baseGeo, instGeo]

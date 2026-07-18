@@ -20,7 +20,7 @@ export default function DragCarousel({ projects }: Props) {
   const magnetRef = useRef<HTMLAnchorElement>(null)
 
   // Background color per project
-  const bgColors = ['#0D0D0D', '#0A0A10', '#0D0A0A']
+  const bgColors = ['#0D0D0D', '#0A0A10', '#0D0A0A', '#0A0A12']
 
   // Magnetic button
   const onMagnetMouseMove = useCallback((e: React.MouseEvent<HTMLAnchorElement>) => {

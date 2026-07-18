@@ -970,6 +970,7 @@ function MetricsSection({ items, index, title }: { items: Metric[]; index: strin
               letterSpacing: '-0.02em',
               lineHeight:    1,
               color:         'var(--accent-green)',
+              overflowWrap:  'anywhere',
             }}>
               {m.value}
             </div>
