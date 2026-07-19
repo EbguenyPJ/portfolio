@@ -18,6 +18,7 @@ const spaceGrotesk = Space_Grotesk({
 })
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://ebgueny.dev'),
   title: 'Ebgueny PJ — Full-Stack Engineer',
   description: 'ERPs, POS and multi-tenant SaaS in production — Laravel · NestJS · Angular. Architecting the unseen.',
   openGraph: {
